@@ -21,7 +21,7 @@ ENGINE = ConversationEngine()
 
 
 class OARequestHandler(BaseHTTPRequestHandler):
-    server_version = "OAHomePainAssistant/0.1"
+    server_version = "OAHomePainAssistant/0.2.1"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -49,7 +49,9 @@ class OARequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/start":
-            state = ENGINE.start()
+            data = self._read_json()
+            language = str(data.get("language", "en"))
+            state = ENGINE.start(language=language)
             SESSIONS[state.session_id] = state
             self._send_json(
                 {
@@ -97,7 +99,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
                 return
 
             REPORTS_DIR.mkdir(exist_ok=True)
-            filename = f"oa-report-{state.created_at.replace(':', '-')}-{state.session_id[:8]}.md"
+            filename = f"oa-report-{state.created_at.replace(':', '-')}-{state.session_id[:8]}.json"
             path = REPORTS_DIR / filename
             path.write_text(state.report, encoding="utf-8")
             self._send_json({"saved": True, "path": str(path)})

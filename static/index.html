@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -11,12 +11,22 @@
       <section class="workspace" aria-label="OA Home Pain Check-in Assistant">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Local Prototype</p>
-            <h1>OA Home Pain Check-in</h1>
+            <p id="eyebrowText" class="eyebrow">本地原型</p>
+            <h1 id="appTitle">骨关节炎疼痛随访</h1>
+            <p id="disclaimerText" class="disclaimer">研究原型：尚未批准用于临床。</p>
           </div>
-          <div class="session-status">
-            <span id="statusDot" class="status-dot idle"></span>
-            <span id="statusText">Ready</span>
+          <div class="topbar-controls">
+            <label class="language-control" for="languageSelect">
+              <span id="languageLabel">语言</span>
+              <select id="languageSelect">
+                <option value="zh-CN" selected>中文</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <div class="session-status">
+              <span id="statusDot" class="status-dot idle"></span>
+              <span id="statusText">准备就绪</span>
+            </div>
           </div>
         </header>
 
@@ -25,21 +35,21 @@
 
           <form id="messageForm" class="composer">
             <button id="startButton" class="primary-button" type="button">
-              Start Check-in
+              开始随访
             </button>
-            <button id="voiceButton" class="icon-button" type="button" aria-label="Start voice input" title="Start voice input">
-              <span aria-hidden="true">Mic</span>
+            <button id="voiceButton" class="icon-button" type="button" aria-label="开始语音输入" title="开始语音输入">
+              <span aria-hidden="true">语音</span>
             </button>
             <input
               id="messageInput"
               type="text"
               autocomplete="off"
-              placeholder="Type an answer or use the microphone"
-              aria-label="Message"
+              placeholder="可以直接说，也可以输入回答"
+              aria-label="回答"
               disabled
             />
-            <button id="sendButton" class="icon-button" type="submit" aria-label="Send answer" title="Send answer" disabled>
-              <span aria-hidden="true">Send</span>
+            <button id="sendButton" class="icon-button" type="submit" aria-label="发送回答" title="发送回答" disabled>
+              <span aria-hidden="true">发送</span>
             </button>
           </form>
         </section>
@@ -47,33 +57,33 @@
 
       <aside class="side-panel" aria-label="Check-in report and safety status">
         <section class="summary-block">
-          <h2>Check-in State</h2>
+          <h2 id="stateTitle">随访状态</h2>
           <dl class="state-grid">
             <div>
-              <dt>Step</dt>
-              <dd id="stepValue">Not started</dd>
+              <dt id="stepLabel">步骤</dt>
+              <dd id="stepValue">未开始</dd>
             </div>
             <div>
-              <dt>Pain</dt>
-              <dd id="painValue">Not captured</dd>
+              <dt id="painLabel">疼痛</dt>
+              <dd id="painValue">未记录</dd>
             </div>
             <div>
-              <dt>Red Flags</dt>
-              <dd id="redFlagValue">Not screened</dd>
+              <dt id="redFlagLabel">危险信号</dt>
+              <dd id="redFlagValue">未筛查</dd>
             </div>
             <div>
-              <dt>Identity</dt>
-              <dd id="identityValue">Not confirmed</dd>
+              <dt id="identityLabel">身份</dt>
+              <dd id="identityValue">未确认</dd>
             </div>
           </dl>
         </section>
 
         <section class="report-block">
           <div class="report-header">
-            <h2>Doctor Report</h2>
-            <button id="saveReportButton" class="secondary-button" type="button" disabled>Save</button>
+            <h2 id="reportTitle">医生报告</h2>
+            <button id="saveReportButton" class="secondary-button" type="button" disabled>保存</button>
           </div>
-          <pre id="reportOutput" class="report-output">The report will appear here after the check-in is complete.</pre>
+          <pre id="reportOutput" class="report-output">随访完成后，这里会显示报告。</pre>
         </section>
       </aside>
     </main>
