@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OA Home Pain Check-in Assistant</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="OA Home Pain Check-in Assistant">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Local Prototype</p>
+            <h1>OA Home Pain Check-in</h1>
+          </div>
+          <div class="session-status">
+            <span id="statusDot" class="status-dot idle"></span>
+            <span id="statusText">Ready</span>
+          </div>
+        </header>
+
+        <section class="conversation-panel" aria-label="Conversation">
+          <div id="transcript" class="transcript" aria-live="polite"></div>
+
+          <form id="messageForm" class="composer">
+            <button id="startButton" class="primary-button" type="button">
+              Start Check-in
+            </button>
+            <button id="voiceButton" class="icon-button" type="button" aria-label="Start voice input" title="Start voice input">
+              <span aria-hidden="true">Mic</span>
+            </button>
+            <input
+              id="messageInput"
+              type="text"
+              autocomplete="off"
+              placeholder="Type an answer or use the microphone"
+              aria-label="Message"
+              disabled
+            />
+            <button id="sendButton" class="icon-button" type="submit" aria-label="Send answer" title="Send answer" disabled>
+              <span aria-hidden="true">Send</span>
+            </button>
+          </form>
+        </section>
+      </section>
+
+      <aside class="side-panel" aria-label="Check-in report and safety status">
+        <section class="summary-block">
+          <h2>Check-in State</h2>
+          <dl class="state-grid">
+            <div>
+              <dt>Step</dt>
+              <dd id="stepValue">Not started</dd>
+            </div>
+            <div>
+              <dt>Pain</dt>
+              <dd id="painValue">Not captured</dd>
+            </div>
+            <div>
+              <dt>Red Flags</dt>
+              <dd id="redFlagValue">Not screened</dd>
+            </div>
+            <div>
+              <dt>Identity</dt>
+              <dd id="identityValue">Not confirmed</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="report-block">
+          <div class="report-header">
+            <h2>Doctor Report</h2>
+            <button id="saveReportButton" class="secondary-button" type="button" disabled>Save</button>
+          </div>
+          <pre id="reportOutput" class="report-output">The report will appear here after the check-in is complete.</pre>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
