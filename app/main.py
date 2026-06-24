@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app.conversation import ConversationEngine
 from app.schemas import ConversationState
+from app.tts import LocalTTS
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -18,15 +19,19 @@ REPORTS_DIR = ROOT_DIR / "reports"
 
 SESSIONS: dict[str, ConversationState] = {}
 ENGINE = ConversationEngine()
+TTS = LocalTTS()
 
 
 class OARequestHandler(BaseHTTPRequestHandler):
-    server_version = "OAHomePainAssistant/0.2.1"
+    server_version = "OAHomePainAssistant/0.3"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
             self._send_json({"ok": True, "sessions": len(SESSIONS)})
+            return
+        if parsed.path == "/api/voice_status":
+            self._send_json(TTS.status())
             return
         if parsed.path == "/api/state":
             query = parse_qs(parsed.query)
@@ -56,7 +61,11 @@ class OARequestHandler(BaseHTTPRequestHandler):
             self._send_json(
                 {
                     "session_id": state.session_id,
-                    "assistant_messages": [state.transcript[-1]["text"]],
+                    "assistant_messages": [
+                        item["text"]
+                        for item in state.transcript
+                        if item.get("role") == "assistant"
+                    ],
                     "state": state.to_dict(),
                 }
             )
@@ -105,6 +114,17 @@ class OARequestHandler(BaseHTTPRequestHandler):
             self._send_json({"saved": True, "path": str(path)})
             return
 
+        if parsed.path == "/api/tts":
+            data = self._read_json()
+            text = str(data.get("text", ""))
+            language = str(data.get("language", "en"))
+            audio, content_type, err = TTS.synthesize(text, language)
+            if not audio:
+                self._send_json({"error": err or "tts unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                return
+            self._send_bytes(audio, content_type)
+            return
+
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: object) -> None:
@@ -130,6 +150,14 @@ class OARequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_bytes(self, body: bytes, content_type: str, status: HTTPStatus = HTTPStatus.OK) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _send_static(self, path: Path) -> None:
         safe_path = path.resolve()
         if not str(safe_path).startswith(str(STATIC_DIR.resolve())):
@@ -149,6 +177,9 @@ class OARequestHandler(BaseHTTPRequestHandler):
 
 
 def run(host: str = "127.0.0.1", port: int = 8000) -> None:
+    print("Loading local TTS models...")
+    TTS.preload()
+    print("Local TTS models ready.")
     server = ThreadingHTTPServer((host, port), OARequestHandler)
     print(f"OA Home Pain Check-in Assistant running at http://{host}:{port}")
     try:

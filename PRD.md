@@ -358,7 +358,7 @@
   **Local Model**
   - Existing local model path:
   ```text
-  /home/lawrencelcty/huggingface/models/Qwen/Qwen3-4B-Instruct-2507-FP8
+  /home/lawrencelcty/huggingface/models/Qwen/Qwen3-0.6B-FP8
   ```
 
   The model should be invoked only when useful, not treated as the sole decision-making engine.
@@ -649,7 +649,7 @@
   Existing model path:
 
   ```text
-  /home/lawrencelcty/huggingface/models/Qwen/Qwen3-4B-Instruct-2507-FP8
+  /home/lawrencelcty/huggingface/models/Qwen/Qwen3-0.6B-FP8
   ```
 
   app/llm.py can call a local OpenAI-compatible endpoint if LOCAL_LLM_URL is configured. If no endpoint is configured, scripted prompts and deterministic report generation are used.

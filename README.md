@@ -32,16 +32,58 @@ The current prototype uses browser text-to-speech, so voice quality depends on t
 - Local/offline: Piper or Coqui-style local TTS for data control, with more setup and voice tuning.
 - Cloud/API: OpenAI TTS, Azure Neural TTS, or ElevenLabs for more natural voices, with external-service/privacy review needed.
 
-## Optional Local LLM
+## Local LLM
 
-The app works without a local model. To enable response/report polishing through a local OpenAI-compatible endpoint, set:
+Start the included lightweight Qwen OpenAI-compatible server:
 
 ```bash
-export LOCAL_LLM_URL="http://127.0.0.1:8001/v1/chat/completions"
-export LOCAL_LLM_MODEL="/home/lawrencelcty/huggingface/models/Qwen/Qwen3-4B-Instruct-2507-FP8"
+python3 -m app.qwen_server
+```
+
+Then start the main app in another terminal:
+
+```bash
+python3 -m app.main
 ```
 
 Clinical red-flag detection and escalation remain deterministic and rule-based even when the LLM is enabled.
+
+The default model path is:
+
+```text
+/home/lawrencelcty/huggingface/models/Qwen/Qwen3-0.6B-FP8
+```
+
+## Local TTS
+
+v0.3 uses Kokoro local TTS for `/api/tts`.
+
+Install:
+
+```bash
+python3 -m pip install "kokoro>=0.9.4" "misaki[zh]>=0.8.2" soundfile
+```
+
+Download/cache the model:
+
+```bash
+python3 - <<'PY'
+from kokoro import KPipeline
+pipeline = KPipeline(lang_code="z", repo_id="hexgrad/Kokoro-82M-v1.1-zh")
+print("Kokoro zh model ready")
+PY
+```
+
+Default model:
+
+```text
+hexgrad/Kokoro-82M-v1.1-zh
+```
+
+Default voices:
+
+- Chinese: `zf_001`
+- English: `af_maple`
 
 ## Test
 

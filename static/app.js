@@ -32,6 +32,7 @@ let autoVoiceEnabled = true;
 let assistantSpeaking = false;
 let selectedVoice = null;
 let currentLanguage = "zh-CN";
+let activeAudio = null;
 
 const UI = {
   "zh-CN": {
@@ -256,6 +257,7 @@ saveReportButton.addEventListener("click", async () => {
 async function startSession() {
   setStatus(ui().starting, "active");
   autoVoiceEnabled = true;
+  stopCurrentSpeech();
   window.speechSynthesis?.cancel();
   const response = await fetch("/api/start", {
     method: "POST",
@@ -347,54 +349,92 @@ function setStatus(text, tone = "idle") {
   statusDot.className = `status-dot ${tone}`;
 }
 
-function speakQueue(messages) {
+async function speakQueue(messages) {
   if (!messages.length) {
     maybeStartAutoListening();
     return;
   }
   const [first, ...rest] = messages;
-  speak(first, () => speakQueue(rest));
+  await speak(first);
+  speakQueue(rest);
 }
 
-function speak(text, onEnd) {
+async function speak(text) {
+  assistantSpeaking = true;
+  setStatus(ui().speaking, "active");
+  try {
+    const playedLocal = await speakWithLocalTts(text);
+    if (!playedLocal) {
+      await speakWithBrowserTts(text);
+    }
+  } finally {
+    assistantSpeaking = false;
+  }
+}
+
+async function speakWithLocalTts(text) {
+  try {
+    const response = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, language: currentLanguage }),
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const blob = await response.blob();
+    if (!blob.size) {
+      return false;
+    }
+    const audioUrl = URL.createObjectURL(blob);
+    const audio = new Audio(audioUrl);
+    activeAudio = audio;
+    await new Promise((resolve, reject) => {
+      audio.onended = resolve;
+      audio.onerror = reject;
+      audio.play().catch(reject);
+    });
+    URL.revokeObjectURL(audioUrl);
+    if (activeAudio === audio) {
+      activeAudio = null;
+    }
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function speakWithBrowserTts(text) {
   if (!("speechSynthesis" in window)) {
-    if (onEnd) {
-      onEnd();
-    } else {
-      maybeStartAutoListening();
-    }
-    return;
+    return Promise.resolve();
   }
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 0.92;
-  utterance.pitch = 1.08;
-  const voice = getPreferredVoice();
-  if (voice) {
-    utterance.voice = voice;
-    utterance.lang = voice.lang;
+  return new Promise((resolve) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.92;
+    utterance.pitch = 1.08;
+    const voice = getPreferredVoice();
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    }
+    utterance.onend = resolve;
+    utterance.onerror = resolve;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+function stopCurrentSpeech() {
+  if (activeAudio) {
+    try {
+      activeAudio.pause();
+      activeAudio.currentTime = 0;
+    } catch (error) {
+      // Ignore audio cleanup errors; the next utterance will create a new element.
+    }
+    activeAudio = null;
   }
-  utterance.onstart = () => {
-    assistantSpeaking = true;
-    setStatus(ui().speaking, "active");
-  };
-  utterance.onend = () => {
-    assistantSpeaking = false;
-    if (onEnd) {
-      onEnd();
-    } else {
-      maybeStartAutoListening();
-    }
-  };
-  utterance.onerror = () => {
-    assistantSpeaking = false;
-    if (onEnd) {
-      onEnd();
-    } else {
-      maybeStartAutoListening();
-    }
-  };
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
+  window.speechSynthesis?.cancel();
 }
 
 function getPreferredVoice() {

@@ -6,19 +6,19 @@ import urllib.error
 import urllib.request
 
 
-DEFAULT_MODEL_PATH = "/home/lawrencelcty/huggingface/models/Qwen/Qwen3-4B-Instruct-2507-FP8"
+DEFAULT_MODEL_PATH = "/home/lawrencelcty/huggingface/models/Qwen/Qwen3-0.6B-FP8"
+DEFAULT_LLM_URL = "http://127.0.0.1:8001/v1/chat/completions"
 
 
 class LocalLLM:
     """Small optional wrapper around a local OpenAI-compatible chat endpoint.
 
-    The app remains fully functional when no local model server is running. Set
-    LOCAL_LLM_URL to an endpoint such as http://localhost:8001/v1/chat/completions
-    and LOCAL_LLM_MODEL to the served model name to enable polishing.
+    The app defaults to the bundled Qwen server URL. If that server is not
+    running, wording polish falls back to the deterministic scripted message.
     """
 
     def __init__(self) -> None:
-        self.url = os.getenv("LOCAL_LLM_URL", "").strip()
+        self.url = os.getenv("LOCAL_LLM_URL", DEFAULT_LLM_URL).strip()
         self.model = os.getenv("LOCAL_LLM_MODEL", DEFAULT_MODEL_PATH)
         self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "8"))
 
@@ -32,8 +32,10 @@ class LocalLLM:
 
         prompt = (
             "Rewrite the following phone-call line for an older adult patient. "
-            "Make it sound like a real human call, not an AI assistant. Keep it under "
-            "20 words when possible. Do not add clinical advice.\n\n"
+            "Make it warm, natural, and suitable for a real phone call. Preserve the "
+            "meaning, safety instruction, question intent, numbers, and language. "
+            "Do not add clinical advice, remove urgent-care wording, or ask extra questions. "
+            "Return only the rewritten line.\n\n"
             f"Message: {message}"
         )
         return self._chat(prompt, fallback=message)
@@ -63,8 +65,8 @@ class LocalLLM:
                 },
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.2,
-            "max_tokens": 500,
+            "temperature": 0.3,
+            "max_tokens": 220,
         }
         data = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
