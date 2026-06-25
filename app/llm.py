@@ -21,13 +21,14 @@ class LocalLLM:
         self.url = os.getenv("LOCAL_LLM_URL", DEFAULT_LLM_URL).strip()
         self.model = os.getenv("LOCAL_LLM_MODEL", DEFAULT_MODEL_PATH)
         self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "8"))
+        self.polish_enabled = _env_enabled("ENABLE_LLM_PROMPT_POLISH")
 
     @property
     def enabled(self) -> bool:
         return bool(self.url)
 
     def polish_assistant_reply(self, message: str) -> str:
-        if not self.enabled:
+        if not self.enabled or not self.polish_enabled:
             return message
 
         prompt = (
@@ -88,3 +89,7 @@ class LocalLLM:
             return fallback
 
         return content or fallback
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}

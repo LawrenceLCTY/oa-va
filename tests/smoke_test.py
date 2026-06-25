@@ -1,12 +1,166 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.conversation import ConversationEngine
+from app.openai_client import UnderstandingResult
+
+
+class FakeSlotAI:
+    def understand(self, step: str, language: str, patient_text: str) -> UnderstandingResult | None:
+        if "恶心" in patient_text:
+            return UnderstandingResult(
+                accepted=True,
+                confidence=0.9,
+                answer_type="free_text",
+                text_value=patient_text,
+                slots={
+                    "respondent_source": None,
+                    "average_24h_score": None,
+                    "current_pain_score": None,
+                    "pain_location": None,
+                    "functional_impact": None,
+                    "usual_comparison": None,
+                    "treatment_context": None,
+                    "side_effect_screening_result": "yes",
+                    "side_effect_description": "恶心",
+                    "symptom_start_time": "昨天晚上",
+                    "symptom_status": "ongoing",
+                    "symptom_severity": "mild",
+                    "medication_changed": "no",
+                    "doctor_contacted": "no",
+                    "emergency_visit_or_hospitalization": "no",
+                },
+                red_flags=[],
+                non_urgent_concerns=["nausea"],
+            )
+        if "膝盖" not in patient_text:
+            return None
+        return UnderstandingResult(
+            accepted=True,
+            confidence=0.9,
+            answer_type="free_text",
+            text_value=patient_text,
+            identity={"name": "刘敏", "mobile_number": "13500135000", "age": 74},
+            slots={
+                "respondent_source": "participant_independently",
+                "average_24h_score": 6,
+                "current_pain_score": 7,
+                "pain_location": "右膝盖",
+                "functional_impact": None,
+                "usual_comparison": None,
+                "treatment_context": None,
+                "side_effect_screening_result": None,
+                "side_effect_description": None,
+                "symptom_start_time": None,
+                "symptom_status": None,
+                "symptom_severity": None,
+                "medication_changed": None,
+                "doctor_contacted": None,
+                "emergency_visit_or_hospitalization": None,
+            },
+            red_flags=[],
+            non_urgent_concerns=[],
+        )
+
+    def friendly_reply(self, language: str, clinical_message: str, recent_transcript=None) -> str | None:
+        return None
+
+
+class FakeClarifyingAI:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def understand(self, step: str, language: str, patient_text: str) -> UnderstandingResult | None:
+        return None
+
+    def friendly_reply(self, language: str, clinical_message: str, recent_transcript=None) -> str | None:
+        return None
+
+    def clarification_reply(
+        self,
+        language: str,
+        step: str,
+        patient_text: str,
+        clinical_prompt: str,
+        reason: str,
+        recent_transcript=None,
+    ) -> str | None:
+        self.calls.append((language, step, patient_text, clinical_prompt, reason))
+        return "I hear that it feels bad. To record it consistently, please choose a number from 0 to 10."
+
+
+def run_natural_start_check_in() -> None:
+    engine = ConversationEngine()
+    state = engine.start(language="zh-CN")
+
+    assert state.step == "identity"
+    assert state.readiness["hearing_clear"] == "assumed"
+    assert "听清楚" not in state.transcript[-1]["text"]
+
+    engine.handle_user_message(state, "我叫陈芳，手机号是13600136000，年龄73岁")
+    assert state.identity.name == "陈芳"
+    assert state.step == "respondent_source"
+
+    for text in (
+        "王丽，手机号13800138000，72岁",
+        "姓名王丽 手机号13800138000 年龄72岁",
+        "王丽 13800138000 72岁",
+    ):
+        state = engine.start(language="zh-CN")
+        engine.handle_user_message(state, text)
+        assert state.identity.name == "王丽"
+        assert state.identity.mobile_number == "13800138000"
+        assert state.identity.age == 72
+        assert state.step == "respondent_source"
+
+
+def run_llm_slot_filling_check_in() -> None:
+    engine = ConversationEngine(ai=FakeSlotAI())
+    state = engine.start(language="zh-CN")
+
+    engine.handle_user_message(state, "我是刘敏，手机号13500135000，74岁，自己答。过去一天六分，现在七分，右膝盖疼。")
+
+    assert state.identity.name == "刘敏"
+    assert state.respondent_source == "participant_independently"
+    assert state.pain.average_24h_score == 6
+    assert state.pain.score == 7
+    assert state.pain.location == "右膝盖"
+    assert state.step == "functional_impact"
+    assert "影响" in state.transcript[-1]["text"] or "活动" in state.transcript[-1]["text"]
+
+    state.step = "side_effects"
+    state.safety.side_effect_screening_result = "unknown"
+    engine.handle_user_message(state, "有点恶心，昨天晚上开始的，现在还有，轻微，没有停药，没联系医生，也没去急诊。")
+
+    assert state.safety.side_effect_screening_result == "yes"
+    assert "恶心" in state.safety.reported_symptoms
+    assert state.safety.symptom_start_time == "昨天晚上"
+    assert state.safety.symptom_status == "ongoing"
+    assert state.safety.symptom_severity == "mild"
+    assert state.safety.medication_changed == "no"
+    assert state.safety.doctor_contacted == "no"
+    assert state.safety.emergency_visit_or_hospitalization == "no"
+    assert state.step == "red_flags"
+
+
+def run_llm_guided_clarification() -> None:
+    ai = FakeClarifyingAI()
+    engine = ConversationEngine(ai=ai)
+    state = engine.start()
+    state.step = "current_pain_score"
+
+    engine.handle_user_message(state, "It is pretty bad today")
+
+    assert state.step == "current_pain_score"
+    assert ai.calls
+    assert ai.calls[-1][1] == "current_pain_score"
+    assert "feels bad" in state.transcript[-1]["text"]
 
 
 def run_routine_check_in() -> None:
@@ -238,11 +392,18 @@ def run_side_effect_detail_check_in() -> None:
 
 
 if __name__ == "__main__":
-    run_routine_check_in()
-    run_red_flag_check_in()
-    run_validation_check_in()
-    run_zero_worse_contradiction()
-    run_chinese_routine_check_in()
-    run_chinese_validation_and_red_flag()
-    run_side_effect_detail_check_in()
+    run_natural_start_check_in()
+    run_llm_slot_filling_check_in()
+    run_llm_guided_clarification()
+    os.environ["STRICT_READINESS_FLOW"] = "1"
+    try:
+        run_routine_check_in()
+        run_red_flag_check_in()
+        run_validation_check_in()
+        run_zero_worse_contradiction()
+        run_chinese_routine_check_in()
+        run_chinese_validation_and_red_flag()
+        run_side_effect_detail_check_in()
+    finally:
+        os.environ.pop("STRICT_READINESS_FLOW", None)
     print("Smoke tests passed.")

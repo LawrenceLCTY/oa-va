@@ -5,6 +5,7 @@ Local prototype for an osteoarthritis home pain monitoring voice assistant.
 ## Run
 
 ```bash
+export OPENAI_API_KEY="sk-..."
 python3 -m app.main
 ```
 
@@ -14,7 +15,7 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The browser UI supports typed input and browser speech input/output when the browser supports the Web Speech APIs.
+The browser UI supports typed input and browser speech input/output. The low-latency browser path is the default; local SenseVoiceSmall STT, OpenAI language understanding, prompt rewriting, and server-side TTS are opt-in.
 
 v0.2 adds a language selector for:
 
@@ -25,12 +26,42 @@ Chinese mode uses an independent Chinese UI, Chinese call script, Chinese speech
 
 Final doctor reports are generated as formatted JSON with stable English keys for easier downstream machine processing.
 
-## Voice Quality
+## v0.4 Voice Pipeline
 
-The current prototype uses browser text-to-speech, so voice quality depends on the browser and operating system voices available on the test machine. For a friendlier, less robotic voice, the next implementation step is to replace browser speech synthesis with a dedicated TTS engine:
+v0.4 can use a hybrid architecture:
 
-- Local/offline: Piper or Coqui-style local TTS for data control, with more setup and voice tuning.
-- Cloud/API: OpenAI TTS, Azure Neural TTS, or ElevenLabs for more natural voices, with external-service/privacy review needed.
+- Browser voice: default speech recognition and speech synthesis path.
+- Local STT: optional SenseVoiceSmall through `/api/stt`.
+- Cloud LLM: optional OpenAI structured answer extraction and friendly prompt rewriting.
+- Cloud TTS: optional OpenAI speech generation through `/api/tts`.
+- Clinical control: the local deterministic state machine still owns step progression, red-flag escalation, and report generation.
+
+Required for OpenAI:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+Optional overrides:
+
+```bash
+export OPENAI_LLM_MODEL="gpt-4o-mini"
+export OPENAI_TTS_MODEL="gpt-4o-mini-tts"
+export OPENAI_TTS_VOICE="alloy"
+```
+
+Latency-sensitive defaults:
+
+```bash
+# Leave these unset for the fastest browser-first UX.
+export PREFER_LOCAL_STT=1
+export PREFER_SERVER_TTS=1
+export ENABLE_OPENAI_UNDERSTANDING=1
+export ENABLE_OPENAI_REPLY_REWRITE=1
+export ENABLE_OPENAI_TTS=1
+```
+
+The app still accepts typed input if STT is not installed, and browser speech recognition/synthesis remains the default fallback when optional local or server voice is unavailable.
 
 ## Local LLM
 
@@ -56,34 +87,69 @@ The default model path is:
 
 ## Local TTS
 
-v0.3 uses Kokoro local TTS for `/api/tts`.
+v0.4 uses OpenAI TTS by default for `/api/tts`. Kokoro local TTS is no longer required.
+
+Only enable the old Kokoro fallback if you intentionally reinstall the model:
+
+```bash
+export ENABLE_KOKORO_TTS_FALLBACK=1
+```
+
+## Local STT: SenseVoiceSmall
+
+`hf download` only downloads model files. SenseVoiceSmall also needs the FunASR runtime and audio dependencies.
 
 Install:
 
 ```bash
-python3 -m pip install "kokoro>=0.9.4" "misaki[zh]>=0.8.2" soundfile
+python3 -m pip install -U funasr modelscope torchaudio soundfile librosa
 ```
 
-Download/cache the model:
+Download the model into the path expected by the app:
+
+```bash
+export HTTP_PROXY=http://crs.datummed.com:8080
+export HTTPS_PROXY=http://crs.datummed.com:8080
+
+huggingface-cli download FunAudioLLM/SenseVoiceSmall \
+  --local-dir /home/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall
+```
+
+If `huggingface-cli download` is blocked, use ModelScope:
 
 ```bash
 python3 - <<'PY'
-from kokoro import KPipeline
-pipeline = KPipeline(lang_code="z", repo_id="hexgrad/Kokoro-82M-v1.1-zh")
-print("Kokoro zh model ready")
+from modelscope import snapshot_download
+
+snapshot_download(
+    "iic/SenseVoiceSmall",
+    local_dir="/home/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall",
+)
 PY
 ```
 
-Default model:
+Override the model path or device:
 
-```text
-hexgrad/Kokoro-82M-v1.1-zh
+```bash
+export SENSEVOICE_MODEL="/path/to/SenseVoiceSmall"
+export SENSEVOICE_DEVICE="cuda"
 ```
 
-Default voices:
+Quick local check:
 
-- Chinese: `zf_001`
-- English: `af_maple`
+```bash
+python3 - <<'PY'
+from funasr import AutoModel
+
+model = AutoModel(
+    model="/home/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall",
+    trust_remote_code=True,
+    device="cuda",
+    disable_update=True,
+)
+print("SenseVoiceSmall ready")
+PY
+```
 
 ## Test
 

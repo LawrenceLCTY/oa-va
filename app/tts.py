@@ -8,6 +8,8 @@ import wave
 from pathlib import Path
 from typing import Any
 
+from app.openai_client import OpenAIClient
+
 
 KOKORO_REPO_ID = "hexgrad/Kokoro-82M-v1.1-zh"
 KOKORO_LOCAL_DIR = "/home/lawrencelcty/huggingface/models/hexgrad/Kokoro-82M-v1.1-zh"
@@ -18,16 +20,21 @@ DEFAULT_TTS_CACHE_DIR = Path(tempfile.gettempdir()) / "oa_voice_assistant_tts"
 
 
 class LocalTTS:
-    """Kokoro local TTS adapter."""
+    """OpenAI TTS adapter with optional Kokoro fallback."""
 
     def __init__(self) -> None:
         self.cache_dir = DEFAULT_TTS_CACHE_DIR
         self._pipelines: dict[str, Any] = {}
+        self.openai = OpenAIClient()
+        self.prefer_local = _env_enabled("PREFER_SERVER_TTS")
 
     def status(self) -> dict[str, object]:
         return {
-            "enabled": True,
-            "engine": "kokoro",
+            "enabled": self.prefer_local,
+            "prefer_local": self.prefer_local,
+            "engine": "openai",
+            "openai": self.openai.status(),
+            "kokoro_fallback_enabled": _kokoro_fallback_enabled(),
             "repo_id": KOKORO_REPO_ID,
             "local_dir": KOKORO_LOCAL_DIR,
             "local_dir_found": Path(KOKORO_LOCAL_DIR).exists(),
@@ -39,12 +46,20 @@ class LocalTTS:
 
     @property
     def enabled(self) -> bool:
-        return True
+        return self.prefer_local
 
     def synthesize(self, text: str, language: str) -> tuple[bytes | None, str, str | None]:
+        if not self.prefer_local:
+            return None, "audio/mpeg", "server TTS is disabled"
         cleaned = _clean_text(text)
         if not cleaned:
             return None, "audio/wav", "empty tts text"
+
+        audio, content_type, err = self.openai.synthesize_speech(cleaned, language)
+        if audio:
+            return audio, content_type, None
+        if not _kokoro_fallback_enabled():
+            return None, content_type, err
 
         lang_code = _kokoro_lang_code(language)
         voice = _kokoro_voice(language)
@@ -99,6 +114,16 @@ class LocalTTS:
 
 def _clean_text(text: str) -> str:
     return " ".join(text.strip().split())[:500]
+
+
+def _kokoro_fallback_enabled() -> bool:
+    return _env_enabled("ENABLE_KOKORO_TTS_FALLBACK")
+
+
+def _env_enabled(name: str) -> bool:
+    import os
+
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _kokoro_lang_code(language: str) -> str:

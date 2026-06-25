@@ -12,6 +12,10 @@ STRINGS = {
             "This is a research prototype, not an emergency or treatment service. "
             "I'm calling for a short joint pain check-in."
         ),
+        "natural_intro": (
+            "Hello, this is a short joint pain check-in from the research team. "
+            "To get started, could you tell me your name, mobile number, and age?"
+        ),
         "hearing_check": "Can you hear me clearly?",
         "time_check": "Is now a good time to continue?",
         "permission_check": "May I continue with the follow-up questions?",
@@ -65,6 +69,7 @@ STRINGS = {
             "这是研究原型，不是急救或治疗服务。"
             "想做一个简短的关节疼痛随访。"
         ),
+        "natural_intro": "您好，这里做一个简短的关节疼痛随访。先请您说一下姓名、手机号和年龄。",
         "hearing_check": "您能听清楚我说话吗？",
         "time_check": "现在方便继续吗？",
         "permission_check": "可以继续问几个随访问题吗？",

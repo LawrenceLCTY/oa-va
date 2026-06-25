@@ -8,8 +8,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from dotenv import load_dotenv
+
 from app.conversation import ConversationEngine
+from app.openai_client import OpenAIClient
 from app.schemas import ConversationState
+from app.stt import LocalSTT
 from app.tts import LocalTTS
 
 
@@ -17,9 +21,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT_DIR / "static"
 REPORTS_DIR = ROOT_DIR / "reports"
 
+load_dotenv(ROOT_DIR / ".env")
+
 SESSIONS: dict[str, ConversationState] = {}
 ENGINE = ConversationEngine()
 TTS = LocalTTS()
+STT = LocalSTT()
+OPENAI = OpenAIClient()
 
 
 class OARequestHandler(BaseHTTPRequestHandler):
@@ -31,7 +39,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "sessions": len(SESSIONS)})
             return
         if parsed.path == "/api/voice_status":
-            self._send_json(TTS.status())
+            self._send_json({"tts": TTS.status(), "stt": STT.status(), "openai": OPENAI.status()})
             return
         if parsed.path == "/api/state":
             query = parse_qs(parsed.query)
@@ -125,6 +133,16 @@ class OARequestHandler(BaseHTTPRequestHandler):
             self._send_bytes(audio, content_type)
             return
 
+        if parsed.path == "/api/stt":
+            audio, filename = self._read_audio_upload()
+            language = self.headers.get("X-Language", "en")
+            text, err = STT.transcribe(audio, filename, language)
+            if not text:
+                self._send_json({"error": err or "stt unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                return
+            self._send_json({"text": text})
+            return
+
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: object) -> None:
@@ -140,6 +158,12 @@ class OARequestHandler(BaseHTTPRequestHandler):
         if isinstance(data, dict):
             return data
         return {}
+
+    def _read_audio_upload(self) -> tuple[bytes, str]:
+        content_length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(content_length) if content_length else b""
+        filename = self.headers.get("X-Filename", "speech.webm")
+        return body, filename
 
     def _send_json(self, payload: dict[str, object], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -177,9 +201,6 @@ class OARequestHandler(BaseHTTPRequestHandler):
 
 
 def run(host: str = "127.0.0.1", port: int = 8000) -> None:
-    print("Loading local TTS models...")
-    TTS.preload()
-    print("Local TTS models ready.")
     server = ThreadingHTTPServer((host, port), OARequestHandler)
     print(f"OA Home Pain Check-in Assistant running at http://{host}:{port}")
     try:

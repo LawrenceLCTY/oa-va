@@ -28,11 +28,24 @@ let sessionId = null;
 let lastState = null;
 let recognition = null;
 let recognizing = false;
+let mediaRecorder = null;
+let recordedChunks = [];
 let autoVoiceEnabled = true;
+let submitStoppedRecording = false;
 let assistantSpeaking = false;
 let selectedVoice = null;
 let currentLanguage = "zh-CN";
 let activeAudio = null;
+let activeSpeechResolve = null;
+let speechGeneration = 0;
+let voiceStatus = null;
+let voiceStatusPromise = null;
+let localSttUsable = false;
+let localTtsUsable = false;
+let localSttFailed = false;
+let localTtsFailed = false;
+let preferLocalStt = false;
+let preferLocalTts = false;
 
 const UI = {
   "zh-CN": {
@@ -76,6 +89,7 @@ const UI = {
     reportPending: "随访完成后，这里会显示报告。",
     systemIntro: "本地原型支持输入和浏览器语音。准备好后开始随访。",
     voiceUnavailableMessage: "当前浏览器语音输入不可用，您可以继续输入回答。",
+    voiceRetryBrowser: "本地语音识别不可用，已切换到浏览器语音输入。",
     savedPrefix: "报告已保存到 ",
     saveFailed: "无法保存报告。",
     sessionNotStarted: "请先开始随访。",
@@ -144,6 +158,7 @@ const UI = {
     reportPending: "The report will appear here after the check-in is complete.",
     systemIntro: "This local prototype supports typed input and browser voice input when available. Start a check-in when ready.",
     voiceUnavailableMessage: "Voice input was not available. You can continue by typing.",
+    voiceRetryBrowser: "Local speech recognition was unavailable, so I switched to browser voice input.",
     savedPrefix: "Report saved to ",
     saveFailed: "Could not save the report.",
     sessionNotStarted: "Start a check-in first.",
@@ -197,7 +212,7 @@ if (SpeechRecognition) {
     setStatus(ui().voiceUnavailable, "warning");
   });
 } else {
-  voiceButton.disabled = true;
+  voiceButton.disabled = !navigator.mediaDevices?.getUserMedia;
   voiceButton.title = ui().voiceUnavailable;
 }
 
@@ -220,20 +235,32 @@ messageForm.addEventListener("submit", async (event) => {
   if (!text || !sessionId) {
     return;
   }
+  cancelAssistantSpeech();
   messageInput.value = "";
   await sendMessage(text);
 });
 
+messageInput.addEventListener("input", () => {
+  if (assistantSpeaking && messageInput.value.trim()) {
+    cancelAssistantSpeech();
+    setStatus(ui().ready, "active");
+  }
+});
+
 voiceButton.addEventListener("click", () => {
-  if (!recognition || !sessionId) {
+  if (!sessionId) {
     return;
   }
   if (recognizing) {
     autoVoiceEnabled = false;
-    recognition.stop();
+    submitStoppedRecording = true;
+    stopListening();
     return;
   }
   autoVoiceEnabled = true;
+  if (assistantSpeaking) {
+    cancelAssistantSpeech();
+  }
   startListening();
 });
 
@@ -257,6 +284,7 @@ saveReportButton.addEventListener("click", async () => {
 async function startSession() {
   setStatus(ui().starting, "active");
   autoVoiceEnabled = true;
+  await loadVoiceStatus();
   stopCurrentSpeech();
   window.speechSynthesis?.cancel();
   const response = await fetch("/api/start", {
@@ -270,13 +298,14 @@ async function startSession() {
   startButton.textContent = ui().restart;
   messageInput.disabled = false;
   sendButton.disabled = false;
-  voiceButton.disabled = !recognition;
+  voiceButton.disabled = !(recognition || canUseLocalStt());
   updateState(payload.state);
   renderAssistantMessages(payload.assistant_messages || []);
   messageInput.focus();
 }
 
 async function sendMessage(text) {
+  cancelAssistantSpeech();
   addMessage("user", text);
   setStatus(ui().processing, "active");
   const response = await fetch("/api/message", {
@@ -296,10 +325,11 @@ async function sendMessage(text) {
 }
 
 function renderAssistantMessages(messages) {
+  const generation = ++speechGeneration;
   for (const message of messages) {
     addMessage("assistant", message);
   }
-  speakQueue(messages);
+  speakQueue(messages, generation);
 }
 
 function addMessage(role, text) {
@@ -349,30 +379,50 @@ function setStatus(text, tone = "idle") {
   statusDot.className = `status-dot ${tone}`;
 }
 
-async function speakQueue(messages) {
+async function speakQueue(messages, generation = speechGeneration) {
+  if (generation !== speechGeneration) {
+    return;
+  }
   if (!messages.length) {
-    maybeStartAutoListening();
+    maybeStartAutoListening(generation);
     return;
   }
   const [first, ...rest] = messages;
-  await speak(first);
-  speakQueue(rest);
-}
-
-async function speak(text) {
-  assistantSpeaking = true;
-  setStatus(ui().speaking, "active");
-  try {
-    const playedLocal = await speakWithLocalTts(text);
-    if (!playedLocal) {
-      await speakWithBrowserTts(text);
-    }
-  } finally {
-    assistantSpeaking = false;
+  await speak(first, generation);
+  if (generation === speechGeneration) {
+    speakQueue(rest, generation);
   }
 }
 
-async function speakWithLocalTts(text) {
+async function speak(text, generation = speechGeneration) {
+  if (generation !== speechGeneration) {
+    return;
+  }
+  assistantSpeaking = true;
+  setStatus(ui().speaking, "active");
+  try {
+    if (preferLocalTts && canUseLocalTts()) {
+      const playedLocal = await speakWithLocalTts(text, generation);
+      if (!playedLocal && generation === speechGeneration) {
+        await speakWithBrowserTts(text, generation);
+      }
+      return;
+    }
+    const playedBrowser = await speakWithBrowserTts(text, generation);
+    if (!playedBrowser && generation === speechGeneration && canUseLocalTts()) {
+      await speakWithLocalTts(text, generation);
+    }
+  } finally {
+    if (generation === speechGeneration) {
+      assistantSpeaking = false;
+    }
+  }
+}
+
+async function speakWithLocalTts(text, generation = speechGeneration) {
+  if (localTtsFailed || !canUseLocalTts()) {
+    return false;
+  }
   try {
     const response = await fetch("/api/tts", {
       method: "POST",
@@ -380,35 +430,46 @@ async function speakWithLocalTts(text) {
       body: JSON.stringify({ text, language: currentLanguage }),
     });
     if (!response.ok) {
+      localTtsFailed = true;
       return false;
     }
     const blob = await response.blob();
     if (!blob.size) {
       return false;
     }
+    if (generation !== speechGeneration) {
+      return true;
+    }
     const audioUrl = URL.createObjectURL(blob);
     const audio = new Audio(audioUrl);
     activeAudio = audio;
     await new Promise((resolve, reject) => {
+      activeSpeechResolve = resolve;
       audio.onended = resolve;
       audio.onerror = reject;
       audio.play().catch(reject);
     });
+    activeSpeechResolve = null;
     URL.revokeObjectURL(audioUrl);
     if (activeAudio === audio) {
       activeAudio = null;
     }
     return true;
   } catch (error) {
+    localTtsFailed = true;
     return false;
   }
 }
 
-function speakWithBrowserTts(text) {
+function speakWithBrowserTts(text, generation = speechGeneration) {
   if (!("speechSynthesis" in window)) {
-    return Promise.resolve();
+    return Promise.resolve(false);
   }
   return new Promise((resolve) => {
+    if (generation !== speechGeneration) {
+      resolve(true);
+      return;
+    }
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.92;
     utterance.pitch = 1.08;
@@ -417,11 +478,18 @@ function speakWithBrowserTts(text) {
       utterance.voice = voice;
       utterance.lang = voice.lang;
     }
-    utterance.onend = resolve;
-    utterance.onerror = resolve;
+    activeSpeechResolve = resolve;
+    utterance.onend = () => resolve(true);
+    utterance.onerror = () => resolve(false);
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   });
+}
+
+function cancelAssistantSpeech() {
+  speechGeneration += 1;
+  stopCurrentSpeech();
+  assistantSpeaking = false;
 }
 
 function stopCurrentSpeech() {
@@ -435,6 +503,10 @@ function stopCurrentSpeech() {
     activeAudio = null;
   }
   window.speechSynthesis?.cancel();
+  if (activeSpeechResolve) {
+    activeSpeechResolve();
+    activeSpeechResolve = null;
+  }
 }
 
 function getPreferredVoice() {
@@ -481,19 +553,40 @@ if ("speechSynthesis" in window) {
   getPreferredVoice();
 }
 
-function maybeStartAutoListening() {
-  if (!autoVoiceEnabled || !recognition || !sessionId || lastState?.complete || recognizing) {
+function maybeStartAutoListening(generation = speechGeneration) {
+  if (!autoVoiceEnabled || !(recognition || canUseLocalStt()) || !sessionId || lastState?.complete || recognizing) {
     return;
   }
   window.setTimeout(() => {
-    if (!assistantSpeaking && !recognizing && !lastState?.complete) {
+    if (generation === speechGeneration && !assistantSpeaking && !recognizing && !lastState?.complete) {
       startListening();
     }
   }, 350);
 }
 
-function startListening() {
-  if (!recognition || recognizing || assistantSpeaking || lastState?.complete) {
+async function startListening() {
+  if (recognizing || lastState?.complete) {
+    return;
+  }
+  if (assistantSpeaking) {
+    cancelAssistantSpeech();
+  }
+  await loadVoiceStatus();
+  if (shouldUseBrowserRecognition()) {
+    startBrowserRecognition();
+    return;
+  }
+  if (canUseLocalStt()) {
+    await startLocalRecording();
+    return;
+  }
+  startBrowserRecognition();
+}
+
+function startBrowserRecognition() {
+  if (!recognition) {
+    addMessage("system", ui().voiceUnavailableMessage);
+    setStatus(ui().voiceUnavailable, "warning");
     return;
   }
   try {
@@ -502,6 +595,126 @@ function startListening() {
   } catch (error) {
     setStatus(ui().ready, "active");
   }
+}
+
+function stopListening() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+    return;
+  }
+  if (recognition) {
+    recognition.stop();
+  }
+}
+
+async function startLocalRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size) {
+        recordedChunks.push(event.data);
+      }
+    };
+    mediaRecorder.onstart = () => {
+      recognizing = true;
+      submitStoppedRecording = true;
+      voiceButton.classList.add("listening");
+      voiceButton.setAttribute("aria-label", ui().micStopLabel);
+      setStatus(ui().listening, "active");
+    };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      recognizing = false;
+      voiceButton.classList.remove("listening");
+      voiceButton.setAttribute("aria-label", ui().micStartLabel);
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      const shouldSubmit = submitStoppedRecording;
+      submitStoppedRecording = false;
+      if (shouldSubmit && blob.size) {
+        await transcribeAndSend(blob);
+      }
+      if (!lastState?.complete && !assistantSpeaking) {
+        setStatus(ui().ready, "active");
+      }
+    };
+    mediaRecorder.start();
+  } catch (error) {
+    localSttFailed = true;
+    if (recognition) {
+      addMessage("system", ui().voiceRetryBrowser);
+      startBrowserRecognition();
+      return;
+    }
+    addMessage("system", ui().voiceUnavailableMessage);
+    setStatus(ui().voiceUnavailable, "warning");
+  }
+}
+
+async function transcribeAndSend(blob) {
+  cancelAssistantSpeech();
+  setStatus(ui().processing, "active");
+  const response = await fetch("/api/stt", {
+    method: "POST",
+    headers: {
+      "Content-Type": blob.type || "audio/webm",
+      "X-Language": currentLanguage,
+      "X-Filename": "speech.webm",
+    },
+    body: blob,
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.text) {
+    localSttFailed = true;
+    if (recognition) {
+      addMessage("system", ui().voiceRetryBrowser);
+      startBrowserRecognition();
+    } else {
+      addMessage("system", payload.error || ui().voiceUnavailableMessage);
+      setStatus(ui().voiceUnavailable, "warning");
+    }
+    return;
+  }
+  messageInput.value = payload.text;
+  messageInput.focus();
+  if (autoVoiceEnabled && sessionId && !lastState?.complete) {
+    messageInput.value = "";
+    await sendMessage(payload.text);
+  }
+}
+
+async function loadVoiceStatus() {
+  if (voiceStatus || voiceStatusPromise) {
+    return voiceStatusPromise || voiceStatus;
+  }
+  voiceStatusPromise = fetch("/api/voice_status")
+    .then((response) => (response.ok ? response.json() : null))
+    .then((status) => {
+      voiceStatus = status;
+      localSttUsable = Boolean(status?.stt?.model_path_found);
+      localTtsUsable = Boolean(status?.tts?.openai?.tts_enabled || status?.tts?.kokoro_fallback_enabled);
+      preferLocalStt = Boolean(status?.stt?.prefer_local);
+      preferLocalTts = Boolean(status?.tts?.prefer_local);
+      return status;
+    })
+    .catch(() => null)
+    .finally(() => {
+      voiceStatusPromise = null;
+    });
+  return voiceStatusPromise;
+}
+
+function canUseLocalStt() {
+  return Boolean(preferLocalStt && navigator.mediaDevices?.getUserMedia && window.MediaRecorder && localSttUsable && !localSttFailed);
+}
+
+function canUseLocalTts() {
+  return Boolean(preferLocalTts && localTtsUsable && !localTtsFailed);
+}
+
+function shouldUseBrowserRecognition() {
+  return Boolean(recognition && (!preferLocalStt || !canUseLocalStt()));
 }
 
 function scrollTranscriptToBottom() {
