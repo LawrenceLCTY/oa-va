@@ -15,6 +15,7 @@ Use this folder to backtrack:
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| [v0.4.1](./v0.4.1.md) | 2026-06-25 | Refines bilingual spoken prompts with explicit clinical intent metadata while preserving deterministic validation and safety flow. |
 | [v0.4](./v0.4.md) | 2026-06-24 | Adds hybrid local STT plus OpenAI structured understanding and TTS for more natural voice calls. |
 | [v0.3](./v0.3.md) | 2026-06-18 | Adds optional local/private LLM wording polish and backend TTS audio pipeline with browser fallback. |
 | [v0.2.1](./v0.2.1.md) | 2026-06-18 | Adds autonomous call readiness/permission checks, caregiver respondent source, 24-hour average plus current pain scores, expanded side-effect detail, and researcher alert flags. |

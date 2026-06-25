@@ -15,7 +15,7 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The browser UI supports typed input and browser speech input/output. The low-latency browser path is the default; local SenseVoiceSmall STT, OpenAI language understanding, prompt rewriting, and server-side TTS are opt-in.
+The browser UI is voice-first. v0.5 uses OpenAI Realtime over WebRTC for low-latency speech-to-speech conversation, while the local deterministic clinical engine still controls protocol flow, red-flag escalation, and report generation. Text is kept as a transcript and backup input, not the primary interaction.
 
 v0.2 adds a language selector for:
 
@@ -26,7 +26,32 @@ Chinese mode uses an independent Chinese UI, Chinese call script, Chinese speech
 
 Final doctor reports are generated as formatted JSON with stable English keys for easier downstream machine processing.
 
-## v0.4 Voice Pipeline
+## v0.5 Realtime Voice Pipeline
+
+v0.5 uses a realtime architecture:
+
+- Browser WebRTC streams microphone audio directly to OpenAI Realtime.
+- OpenAI Realtime streams assistant audio back with interruption/barge-in support.
+- A browser data channel receives transcripts and tool calls.
+- The model calls `submit_patient_answer` after each patient answer.
+- The Python app runs the existing clinical state machine and returns the required next clinical line.
+- The final doctor report is still generated locally from structured state.
+
+Required:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+Optional realtime overrides:
+
+```bash
+export OPENAI_REALTIME_MODEL="gpt-realtime"
+export OPENAI_REALTIME_VOICE="marin"
+export OPENAI_TRANSCRIBE_MODEL="gpt-4o-mini-transcribe"
+```
+
+## v0.4 Legacy Voice Pipeline
 
 v0.4 can use a hybrid architecture:
 
@@ -36,7 +61,7 @@ v0.4 can use a hybrid architecture:
 - Cloud TTS: optional OpenAI speech generation through `/api/tts`.
 - Clinical control: the local deterministic state machine still owns step progression, red-flag escalation, and report generation.
 
-Required for OpenAI:
+Required for legacy OpenAI features:
 
 ```bash
 export OPENAI_API_KEY="sk-..."

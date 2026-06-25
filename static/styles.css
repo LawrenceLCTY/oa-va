@@ -159,17 +159,86 @@ h2 {
 
 .conversation-panel {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto minmax(180px, 1fr) auto;
   flex: 1;
   min-height: calc(100vh - 150px);
+}
+
+.call-stage {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 34px 18px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.voice-orb {
+  width: min(220px, 46vw);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.9) 0 22%, rgba(18, 110, 99, 0.24) 23% 42%, transparent 43%),
+    conic-gradient(from 80deg, #126e63, #3b82f6, #d97706, #126e63);
+  box-shadow: 0 20px 50px rgba(18, 110, 99, 0.2);
+  opacity: 0.75;
+}
+
+.voice-orb span {
+  width: 54%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(18, 110, 99, 0.18);
+}
+
+.voice-orb.connecting,
+.voice-orb.processing {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.voice-orb.listening,
+.voice-orb.speaking {
+  opacity: 1;
+  animation: breathe 1.8s ease-in-out infinite;
+}
+
+.voice-orb.urgent,
+.voice-orb.error {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.9) 0 22%, rgba(180, 35, 24, 0.24) 23% 42%, transparent 43%),
+    conic-gradient(from 80deg, #b42318, #d97706, #b42318);
+}
+
+.call-hint {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+  text-align: center;
+}
+
+.call-actions {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.call-button {
+  min-width: 180px;
+  justify-content: center;
 }
 
 .transcript {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: calc(100vh - 230px);
-  overflow: visible;
+  min-height: 180px;
+  max-height: calc(100vh - 420px);
+  overflow: auto;
   padding: 18px;
   scroll-behavior: smooth;
 }
@@ -207,7 +276,7 @@ h2 {
   position: sticky;
   bottom: 0;
   display: grid;
-  grid-template-columns: auto 44px minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) 44px;
   gap: 10px;
   align-items: center;
   padding: 14px;
@@ -407,16 +476,32 @@ button:disabled {
   }
 
   .composer {
-    grid-template-columns: 56px minmax(0, 1fr) 56px;
-  }
-
-  .primary-button {
-    grid-column: 1 / -1;
-    justify-content: center;
-    width: 100%;
+    grid-template-columns: minmax(0, 1fr) 56px;
   }
 
   .message {
     max-width: 94%;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+
+  50% {
+    opacity: 1;
   }
 }

@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 from dotenv import load_dotenv
 
 from app.conversation import ConversationEngine
+from app.i18n import intent
 from app.openai_client import OpenAIClient
 from app.schemas import ConversationState
 from app.stt import LocalSTT
@@ -39,7 +40,19 @@ class OARequestHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "sessions": len(SESSIONS)})
             return
         if parsed.path == "/api/voice_status":
-            self._send_json({"tts": TTS.status(), "stt": STT.status(), "openai": OPENAI.status()})
+            openai_status = OPENAI.status()
+            self._send_json(
+                {
+                    "tts": TTS.status(),
+                    "stt": STT.status(),
+                    "openai": openai_status,
+                    "realtime": {
+                        "enabled": bool(openai_status.get("enabled")),
+                        "model": openai_status.get("realtime_model"),
+                        "voice": openai_status.get("realtime_voice"),
+                    },
+                }
+            )
             return
         if parsed.path == "/api/state":
             query = parse_qs(parsed.query)
@@ -79,6 +92,34 @@ class OARequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if parsed.path == "/api/realtime/start":
+            data = self._read_json()
+            language = str(data.get("language", "en"))
+            state = ENGINE.start(language=language)
+            SESSIONS[state.session_id] = state
+            assistant_messages = [
+                item["text"]
+                for item in state.transcript
+                if item.get("role") == "assistant"
+            ]
+            session, err = OPENAI.create_realtime_session(
+                state.session_id,
+                state.language,
+                " ".join(assistant_messages),
+            )
+            if not session:
+                self._send_json({"error": err or "realtime unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                return
+            self._send_json(
+                {
+                    "session_id": state.session_id,
+                    "realtime": session,
+                    "assistant_messages": assistant_messages,
+                    "state": state.to_dict(),
+                }
+            )
+            return
+
         if parsed.path == "/api/message":
             data = self._read_json()
             session_id = str(data.get("session_id", ""))
@@ -99,6 +140,41 @@ class OARequestHandler(BaseHTTPRequestHandler):
                 {
                     "session_id": state.session_id,
                     "assistant_messages": assistant_messages,
+                    "state": state.to_dict(),
+                }
+            )
+            return
+
+        if parsed.path == "/api/realtime/tool":
+            data = self._read_json()
+            name = str(data.get("name", ""))
+            arguments = data.get("arguments", {})
+            if name != "submit_patient_answer":
+                self._send_json({"error": "unknown tool"}, HTTPStatus.BAD_REQUEST)
+                return
+            if not isinstance(arguments, dict):
+                self._send_json({"error": "invalid tool arguments"}, HTTPStatus.BAD_REQUEST)
+                return
+            session_id = str(arguments.get("session_id", ""))
+            text = str(arguments.get("answer", ""))
+            state = SESSIONS.get(session_id)
+            if not state:
+                self._send_json({"error": "session not found"}, HTTPStatus.NOT_FOUND)
+                return
+
+            before = len(state.transcript)
+            ENGINE.handle_user_message(state, text)
+            assistant_messages = [
+                item["text"]
+                for item in state.transcript[before:]
+                if item.get("role") == "assistant"
+            ]
+            self._send_json(
+                {
+                    "ok": True,
+                    "session_id": state.session_id,
+                    "assistant_messages": assistant_messages,
+                    "spoken_instruction": _spoken_instruction(assistant_messages, state.step, state.complete),
                     "state": state.to_dict(),
                 }
             )
@@ -209,6 +285,43 @@ def run(host: str = "127.0.0.1", port: int = 8000) -> None:
         print("\nShutting down.")
     finally:
         server.server_close()
+
+
+def _spoken_instruction(assistant_messages: list[str], step: str, complete: bool) -> str:
+    required = " ".join(message.strip() for message in assistant_messages if message.strip())
+    if complete:
+        return f"Say this closing message naturally, then stop: {required}"
+    slot_intent = intent(_prompt_key_for_step(step))
+    intent_clause = f" The clinical intent is: {slot_intent}." if slot_intent else ""
+    return (
+        "Say this next required clinical line naturally and briefly. Preserve all clinical meaning, "
+        f"numbers, and safety wording.{intent_clause} Required line: {required}"
+    )
+
+
+def _prompt_key_for_step(step: str) -> str:
+    return {
+        "readiness_hearing": "hearing_check",
+        "readiness_time": "time_check",
+        "permission": "permission_check",
+        "identity": "identity_prompt",
+        "respondent_source": "respondent_source",
+        "average_pain_score": "average_pain_prompt",
+        "current_pain_score": "current_pain_prompt",
+        "pain_location": "pain_location",
+        "functional_impact": "functional_impact",
+        "usual_comparison": "comparison",
+        "treatment_context": "treatment",
+        "side_effects": "side_effects",
+        "side_effect_description": "side_effect_description",
+        "side_effect_start": "side_effect_start",
+        "side_effect_status": "side_effect_status",
+        "side_effect_severity": "side_effect_severity",
+        "medication_changed": "medication_changed",
+        "doctor_contacted": "doctor_contacted",
+        "emergency_visit": "emergency_visit",
+        "red_flags": "red_flags",
+    }.get(step, step)
 
 
 if __name__ == "__main__":

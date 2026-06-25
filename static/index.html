@@ -31,15 +31,24 @@
         </header>
 
         <section class="conversation-panel" aria-label="Conversation">
+          <div class="call-stage">
+            <div id="orb" class="voice-orb idle" aria-hidden="true">
+              <span></span>
+            </div>
+            <p id="callHint" class="call-hint">准备好后开始语音随访。</p>
+            <div class="call-actions">
+              <button id="startButton" class="primary-button call-button" type="button">
+                开始随访
+              </button>
+              <button id="voiceButton" class="secondary-button" type="button" disabled>
+                结束
+              </button>
+            </div>
+          </div>
+
           <div id="transcript" class="transcript" aria-live="polite"></div>
 
           <form id="messageForm" class="composer">
-            <button id="startButton" class="primary-button" type="button">
-              开始随访
-            </button>
-            <button id="voiceButton" class="icon-button" type="button" aria-label="开始语音输入" title="开始语音输入">
-              <span aria-hidden="true">语音</span>
-            </button>
             <input
               id="messageInput"
               type="text"

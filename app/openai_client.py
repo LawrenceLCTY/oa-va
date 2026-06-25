@@ -14,6 +14,9 @@ DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_LLM_MODEL = "gpt-4o-mini"
 DEFAULT_OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
 DEFAULT_OPENAI_TTS_VOICE = "marin"
+DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime"
+DEFAULT_OPENAI_REALTIME_VOICE = "marin"
+DEFAULT_OPENAI_TRANSCRIBE_MODEL = "gpt-4o-mini-transcribe"
 
 
 @dataclass(frozen=True)
@@ -39,6 +42,9 @@ class OpenAIClient:
         self.llm_model = os.getenv("OPENAI_LLM_MODEL", DEFAULT_OPENAI_LLM_MODEL)
         self.tts_model = os.getenv("OPENAI_TTS_MODEL", DEFAULT_OPENAI_TTS_MODEL)
         self.tts_voice = os.getenv("OPENAI_TTS_VOICE", DEFAULT_OPENAI_TTS_VOICE)
+        self.realtime_model = os.getenv("OPENAI_REALTIME_MODEL", DEFAULT_OPENAI_REALTIME_MODEL)
+        self.realtime_voice = os.getenv("OPENAI_REALTIME_VOICE", DEFAULT_OPENAI_REALTIME_VOICE)
+        self.transcribe_model = os.getenv("OPENAI_TRANSCRIBE_MODEL", DEFAULT_OPENAI_TRANSCRIBE_MODEL)
         self.timeout_seconds = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
         self.understanding_enabled = _env_enabled("ENABLE_OPENAI_UNDERSTANDING")
         self.reply_rewrite_enabled = _env_enabled("ENABLE_OPENAI_REPLY_REWRITE")
@@ -54,11 +60,57 @@ class OpenAIClient:
             "llm_model": self.llm_model,
             "tts_model": self.tts_model,
             "tts_voice": self.tts_voice,
+            "realtime_model": self.realtime_model,
+            "realtime_voice": self.realtime_voice,
+            "transcribe_model": self.transcribe_model,
             "base_url": self.base_url,
             "understanding_enabled": self.understanding_enabled,
             "reply_rewrite_enabled": self.reply_rewrite_enabled,
             "tts_enabled": self.tts_enabled,
         }
+
+    def create_realtime_session(
+        self,
+        session_id: str,
+        language: str,
+        initial_prompt: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        if not self.enabled:
+            return None, "OPENAI_API_KEY is not set"
+
+        session = {
+            "type": "realtime",
+            "model": self.realtime_model,
+            "instructions": _realtime_instructions(language, session_id, initial_prompt),
+            "audio": {
+                "input": {
+                    "transcription": {"model": self.transcribe_model},
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "threshold": 0.5,
+                        "prefix_padding_ms": 300,
+                        "silence_duration_ms": 650,
+                        "create_response": True,
+                        "interrupt_response": True,
+                    },
+                },
+                "output": {"voice": self.realtime_voice},
+            },
+            "tools": [_submit_patient_answer_tool()],
+            "tool_choice": "auto",
+        }
+        body = self._post_json("/realtime/client_secrets", {"session": session})
+        if body and "error" in body:
+            body = self._post_json("/realtime/client_secrets", {"session": _legacy_realtime_session(session)})
+        if not body:
+            return None, "Could not create OpenAI Realtime session"
+        if "error" in body:
+            error = body.get("error")
+            if isinstance(error, dict):
+                return None, _clean_error_message(error.get("message"))
+            return None, _clean_error_message(error)
+        body.setdefault("model", self.realtime_model)
+        return body, None
 
     def understand(self, step: str, language: str, patient_text: str) -> UnderstandingResult | None:
         if not self.enabled or not self.understanding_enabled:
@@ -377,6 +429,12 @@ class OpenAIClient:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            try:
+                error_body = exc.read().decode("utf-8")
+            except Exception:
+                error_body = str(exc)
+            return {"error": {"message": error_body, "status": exc.code}}
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
             return None
 
@@ -417,6 +475,69 @@ def _tts_instructions(language: str) -> str:
     )
 
 
+def _realtime_instructions(language: str, session_id: str, initial_prompt: str) -> str:
+    if language == "zh-CN":
+        language_rule = "Speak Mandarin Chinese unless the patient clearly switches language."
+    else:
+        language_rule = "Speak English unless the patient clearly switches language."
+    return (
+        "You are a warm, concise voice assistant conducting an osteoarthritis home pain check-in. "
+        "This is a research prototype, not emergency care. Sound natural in a live phone conversation: "
+        "short acknowledgements, one question at a time, no long monologues. "
+        f"{language_rule} "
+        "A deterministic clinical engine controls the protocol, safety escalation, and report. "
+        "After each patient answer, call submit_patient_answer with the exact session_id and the patient's answer. "
+        "Then use the tool result's assistant_messages as the next required clinical line. You may make the wording "
+        "slightly more conversational, but preserve clinical meaning, numbers, and urgent-care instructions. "
+        "Do not diagnose, prescribe, ask unrelated questions, or skip required protocol items. "
+        "If the patient reports possible urgent symptoms, keep the urgent-care wording from the tool result. "
+        f"The clinical session id is {session_id}. "
+        f"Start the conversation by saying this required first line naturally: {initial_prompt}"
+    )
+
+
+def _submit_patient_answer_tool() -> dict[str, object]:
+    return {
+        "type": "function",
+        "name": "submit_patient_answer",
+        "description": (
+            "Submit the patient's latest answer to the clinical protocol engine. "
+            "Call this once after each patient answer before asking the next clinical question."
+        ),
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "The clinical session id supplied by the app.",
+                },
+                "answer": {
+                    "type": "string",
+                    "description": "A faithful transcript or concise summary of the patient's answer.",
+                },
+            },
+            "required": ["session_id", "answer"],
+        },
+    }
+
+
+def _legacy_realtime_session(session: dict[str, object]) -> dict[str, object]:
+    audio = session.get("audio") if isinstance(session.get("audio"), dict) else {}
+    audio_input = audio.get("input") if isinstance(audio.get("input"), dict) else {}
+    audio_output = audio.get("output") if isinstance(audio.get("output"), dict) else {}
+    return {
+        "model": session.get("model"),
+        "voice": audio_output.get("voice"),
+        "modalities": ["audio", "text"],
+        "instructions": session.get("instructions"),
+        "input_audio_transcription": audio_input.get("transcription"),
+        "turn_detection": audio_input.get("turn_detection"),
+        "tools": session.get("tools"),
+        "tool_choice": session.get("tool_choice"),
+    }
+
+
 def _format_recent_transcript(transcript: list[dict[str, str]], limit: int = 6) -> str:
     items = transcript[-limit:]
     if not items:
@@ -431,3 +552,17 @@ def _format_recent_transcript(transcript: list[dict[str, str]], limit: int = 6) 
 
 def _env_enabled(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _clean_error_message(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "Could not create OpenAI Realtime session"
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    error = parsed.get("error") if isinstance(parsed, dict) else None
+    if isinstance(error, dict):
+        return str(error.get("message") or text)
+    return text
