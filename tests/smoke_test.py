@@ -257,6 +257,57 @@ def run_validation_check_in() -> None:
     assert "side effects" in state.transcript[-1]["text"].lower()
 
 
+def run_vas_binary_calibration() -> None:
+    engine = ConversationEngine()
+    state = engine.start()
+
+    for message in (
+        "yes",
+        "yes",
+        "yes",
+        "My name is Ravi Tan, phone 95678901, age 76.",
+        "participant alone",
+    ):
+        engine.handle_user_message(state, message)
+
+    assert state.step == "average_pain_score"
+    assert state.pain.active_vas_period == "average_24h"
+    assert "closer to" in state.transcript[-1]["text"].lower()
+
+    for message in ("higher", "lower", "higher"):
+        engine.handle_user_message(state, message)
+
+    assert state.pain.average_24h_score == 8
+    assert state.pain.average_24h_score_confirmed
+    assert len(state.pain.average_24h_vas_trace) == 3
+    assert state.step == "current_pain_score"
+
+    for message in ("lower", "higher", "lower", "lower"):
+        engine.handle_user_message(state, message)
+
+    assert state.pain.score == 3
+    assert state.pain.current_score_confirmed
+    assert len(state.pain.current_vas_trace) == 4
+    assert state.step == "pain_location"
+
+    for message in (
+        "right knee",
+        "It slows me on stairs.",
+        "same",
+        "paracetamol",
+        "no",
+        "no",
+    ):
+        engine.handle_user_message(state, message)
+
+    assert state.complete
+    report = json.loads(state.report or "{}")
+    assert report["pain_assessment"]["average_24h_score"] == 8
+    assert report["pain_assessment"]["current_score"] == 3
+    assert len(report["pain_assessment"]["average_24h_vas_trace"]) == 3
+    assert len(report["pain_assessment"]["current_vas_trace"]) == 4
+
+
 def run_zero_worse_contradiction() -> None:
     engine = ConversationEngine()
     state = engine.start()
@@ -400,6 +451,7 @@ if __name__ == "__main__":
         run_routine_check_in()
         run_red_flag_check_in()
         run_validation_check_in()
+        run_vas_binary_calibration()
         run_zero_worse_contradiction()
         run_chinese_routine_check_in()
         run_chinese_validation_and_red_flag()

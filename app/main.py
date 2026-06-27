@@ -51,6 +51,10 @@ class OARequestHandler(BaseHTTPRequestHandler):
                         "model": openai_status.get("realtime_model"),
                         "voice": openai_status.get("realtime_voice"),
                     },
+                    "fallback": {
+                        "enabled": True,
+                        "mode": "deterministic scripted conversation with browser speech/typed input",
+                    },
                 }
             )
             return

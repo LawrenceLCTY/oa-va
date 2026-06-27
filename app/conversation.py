@@ -30,6 +30,17 @@ from app.validators import (
     classify_symptom_status,
     classify_yes_no_unsure,
 )
+from app.vas import (
+    clarification as vas_clarification,
+    final_summary as vas_final_summary,
+    is_complete as vas_is_complete,
+    next_range as vas_next_range,
+    parse_choice as parse_vas_choice,
+    question as vas_question,
+    result_score as vas_result_score,
+    start_range as vas_start_range,
+    trace_entry as vas_trace_entry,
+)
 
 
 class ConversationEngine:
@@ -204,6 +215,8 @@ class ConversationEngine:
         self._advance_to_next_missing(state, after="respondent_source")
 
     def _handle_average_pain_score(self, state: ConversationState, text: str, understood: UnderstandingResult | None) -> None:
+        if self._handle_vas_answer(state, text, "average_24h"):
+            return
         score = _understood_pain_score(understood)
         validation = validate_pain_score_answer(text)
         if score is None and not validation.accepted:
@@ -220,6 +233,8 @@ class ConversationEngine:
         self._advance_to_next_missing(state, after="average_pain_score")
 
     def _handle_current_pain_score(self, state: ConversationState, text: str, understood: UnderstandingResult | None) -> None:
+        if self._handle_vas_answer(state, text, "current"):
+            return
         score = _understood_pain_score(understood)
         validation = validate_pain_score_answer(text)
         if score is None and not validation.accepted:
@@ -637,9 +652,9 @@ class ConversationEngine:
         if step == "respondent_source":
             self._assistant(state, t(state.language, "respondent_source"))
         elif step == "average_pain_score":
-            self._assistant(state, t(state.language, "average_pain_prompt"))
+            self._start_vas_calibration(state, "average_24h")
         elif step == "current_pain_score":
-            self._assistant(state, t(state.language, "current_pain_prompt"))
+            self._start_vas_calibration(state, "current")
         elif step == "pain_location":
             self._assistant(state, t(state.language, "pain_location"))
         elif step == "functional_impact":
@@ -668,6 +683,76 @@ class ConversationEngine:
             self._assistant(state, t(state.language, "red_flags"))
         else:
             self._assistant(state, t(state.language, "continue"))
+
+    def _start_vas_calibration(self, state: ConversationState, period: str) -> None:
+        low, high = vas_start_range()
+        state.pain.active_vas_period = period
+        state.pain.active_vas_low = low
+        state.pain.active_vas_high = high
+        intro_key = "average_pain_prompt" if period == "average_24h" else "current_pain_prompt"
+        prompt = f"{t(state.language, intro_key)} {vas_question(low, high, state.language, period).text}"
+        self._assistant(state, prompt)
+
+    def _handle_vas_answer(self, state: ConversationState, text: str, period: str) -> bool:
+        if state.pain.active_vas_period != period:
+            return False
+        low = state.pain.active_vas_low
+        high = state.pain.active_vas_high
+        if low is None or high is None:
+            self._start_vas_calibration(state, period)
+            return True
+
+        direct = validate_pain_score_answer(text)
+        if direct.accepted:
+            score = int(direct.value)
+            self._record_vas_score(state, period, score, text, method="direct_numeric_override")
+            state.pain.active_vas_period = None
+            state.pain.active_vas_low = None
+            state.pain.active_vas_high = None
+            state.step = "current_pain_score" if period == "average_24h" else "pain_location"
+            self._advance_to_next_missing(state, after="average_pain_score" if period == "average_24h" else "current_pain_score")
+            return True
+
+        choice = parse_vas_choice(text, state.language)
+        if not choice:
+            self._assistant(state, vas_clarification(state.language))
+            return True
+
+        self._vas_trace(state, period).append(vas_trace_entry(low, high, choice, state.language, period))
+        low, high = vas_next_range(low, high, choice)
+        state.pain.active_vas_low = low
+        state.pain.active_vas_high = high
+        if not vas_is_complete(low, high):
+            self._assistant(state, vas_question(low, high, state.language, period).text)
+            return True
+
+        score = vas_result_score(low, high)
+        self._record_vas_score(state, period, score, text, method="binary_anchor_calibrated")
+        state.pain.active_vas_period = None
+        state.pain.active_vas_low = None
+        state.pain.active_vas_high = None
+        self._assistant(state, vas_final_summary(score, state.language))
+        next_step = "current_pain_score" if period == "average_24h" else "pain_location"
+        state.step = next_step
+        self._advance_to_next_missing(state, after="average_pain_score" if period == "average_24h" else "current_pain_score")
+        return True
+
+    def _record_vas_score(self, state: ConversationState, period: str, score: int, text: str, method: str) -> None:
+        if period == "average_24h":
+            state.pain.average_24h_score = score
+            state.pain.average_24h_severity = pain_severity(score)
+            state.pain.average_24h_score_confirmed = True
+            state.pain.patient_words.append(f"24h average pain ({method}): {score}; final answer: {text}")
+            return
+        state.pain.score = score
+        state.pain.severity = pain_severity(score)
+        state.pain.current_score_confirmed = True
+        state.pain.patient_words.append(f"current pain ({method}): {score}; final answer: {text}")
+
+    def _vas_trace(self, state: ConversationState, period: str) -> list[dict[str, object]]:
+        if period == "average_24h":
+            return state.pain.average_24h_vas_trace
+        return state.pain.current_vas_trace
 
     def _apply_understood_identity(self, state: ConversationState, understood: UnderstandingResult | None) -> None:
         if not understood or not understood.identity or understood.confidence < 0.55:

@@ -25,6 +25,7 @@ const identityLabel = document.querySelector("#identityLabel");
 const reportTitle = document.querySelector("#reportTitle");
 const callHint = document.querySelector("#callHint");
 const orb = document.querySelector("#orb");
+const conversationPanel = document.querySelector(".conversation-panel");
 
 const REALTIME_URL = "https://api.openai.com/v1/realtime";
 
@@ -40,6 +41,10 @@ let pendingAssistantText = "";
 let pendingUserText = "";
 let pendingFunctionCalls = new Map();
 let handledFunctionCalls = new Set();
+let fallbackMode = false;
+let recognition = null;
+let recognizing = false;
+let selectedVoice = null;
 
 const UI = {
   "zh-CN": {
@@ -59,11 +64,14 @@ const UI = {
     start: "开始语音随访",
     restart: "重新开始",
     end: "结束",
+    speak: "说话",
+    stopMic: "停止",
     callReady: "准备好后开始语音随访。",
     callConnecting: "正在建立实时语音连接...",
     callLive: "可以直接说话。我会边听边回应。",
     callEnded: "通话已结束。",
     realtimeUnavailable: "实时语音不可用。请确认已设置 OPENAI_API_KEY。",
+    fallbackStarted: "实时语音暂不可用，已切换到基础随访模式。",
     micUnavailable: "无法打开麦克风。请检查浏览器权限。",
     inputPlaceholder: "需要时可输入补充回答",
     inputAria: "补充回答",
@@ -128,11 +136,14 @@ const UI = {
     start: "Start Voice Check-in",
     restart: "Restart",
     end: "End",
+    speak: "Speak",
+    stopMic: "Stop",
     callReady: "Start when you are ready to speak.",
     callConnecting: "Connecting realtime voice...",
     callLive: "You can speak naturally. I will listen and respond in real time.",
     callEnded: "Call ended.",
     realtimeUnavailable: "Realtime voice is unavailable. Check OPENAI_API_KEY.",
+    fallbackStarted: "Realtime voice is unavailable, so I switched to the base check-in mode.",
     micUnavailable: "Could not open the microphone. Check browser permissions.",
     inputPlaceholder: "Type a backup answer if needed",
     inputAria: "Backup answer",
@@ -161,12 +172,42 @@ const UI = {
 };
 
 const ui = () => UI[currentLanguage] || UI.en;
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = currentLanguage;
+  recognition.addEventListener("start", () => {
+    recognizing = true;
+    setCallMode("listening");
+  });
+  recognition.addEventListener("end", () => {
+    recognizing = false;
+    if (fallbackMode && !lastState?.complete) {
+      setCallMode("ready");
+    }
+  });
+  recognition.addEventListener("result", (event) => {
+    const text = event.results[event.results.length - 1][0].transcript.trim();
+    if (text) {
+      messageInput.value = "";
+      addMessage("user", text);
+      submitTypedAnswer(text);
+    }
+  });
+}
 
 startButton.addEventListener("click", async () => {
   await startRealtimeCall();
 });
 
 voiceButton.addEventListener("click", () => {
+  if (fallbackMode) {
+    toggleFallbackMic();
+    return;
+  }
   endRealtimeCall();
 });
 
@@ -211,6 +252,7 @@ async function startRealtimeCall() {
   try {
     const startPayload = await createRealtimeSession();
     sessionId = startPayload.session_id;
+    updateConversationLayout();
     updateState(startPayload.state);
     enableBackupInput(true);
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -229,9 +271,39 @@ async function startRealtimeCall() {
   } catch (error) {
     console.error(error);
     endRealtimeCall({ keepTranscript: true });
-    addMessage("system", error.message || ui().realtimeUnavailable);
-    setCallMode("error");
+    await startBaseFallback(error.message || ui().realtimeUnavailable);
   }
+}
+
+async function startBaseFallback(reason) {
+  fallbackMode = true;
+  resetConversationUi();
+  setCallMode("connecting");
+  const response = await fetch("/api/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language: currentLanguage }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    addMessage("system", payload.error || reason || ui().realtimeUnavailable);
+    setCallMode("error");
+    return;
+  }
+  sessionId = payload.session_id;
+  updateConversationLayout();
+  updateState(payload.state);
+  enableBackupInput(true);
+  voiceButton.disabled = !recognition;
+  voiceButton.textContent = recognition ? ui().speak : ui().end;
+  languageSelect.disabled = true;
+  startButton.textContent = ui().restart;
+  addMessage("system", ui().fallbackStarted);
+  for (const message of payload.assistant_messages || []) {
+    addMessage("assistant", message);
+  }
+  await speakFallbackQueue(payload.assistant_messages || []);
+  setCallMode(lastState?.complete ? "complete" : "ready");
 }
 
 async function createRealtimeSession() {
@@ -444,6 +516,10 @@ async function runClinicalTool(name, args) {
 
 async function submitTypedAnswer(text) {
   setCallMode("processing");
+  if (fallbackMode) {
+    await submitFallbackAnswer(text);
+    return;
+  }
   const result = await runClinicalTool("submit_patient_answer", { session_id: sessionId, answer: text });
   if (dataChannel?.readyState === "open") {
     sendRealtimeEvent({
@@ -462,6 +538,87 @@ async function submitTypedAnswer(text) {
       },
     });
   }
+}
+
+async function submitFallbackAnswer(text) {
+  const response = await fetch("/api/message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, text }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    addMessage("system", payload.error || ui().error);
+    setCallMode("error");
+    return;
+  }
+  updateState(payload.state);
+  for (const message of payload.assistant_messages || []) {
+    addMessage("assistant", message);
+  }
+  await speakFallbackQueue(payload.assistant_messages || []);
+  setCallMode(lastState?.complete ? "complete" : "ready");
+}
+
+async function speakFallbackQueue(messages) {
+  for (const message of messages) {
+    await speakFallback(message);
+  }
+}
+
+function speakFallback(text) {
+  if (!("speechSynthesis" in window)) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.92;
+    utterance.pitch = 1.04;
+    const voice = getPreferredVoice();
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else {
+      utterance.lang = currentLanguage;
+    }
+    utterance.onend = resolve;
+    utterance.onerror = resolve;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+function toggleFallbackMic() {
+  if (!recognition || !sessionId || lastState?.complete) {
+    return;
+  }
+  if (recognizing) {
+    recognition.stop();
+    voiceButton.textContent = ui().speak;
+    return;
+  }
+  try {
+    recognition.lang = currentLanguage;
+    recognition.start();
+    voiceButton.textContent = ui().stopMic;
+  } catch (error) {
+    setCallMode("ready");
+  }
+}
+
+function getPreferredVoice() {
+  if (selectedVoice) {
+    return selectedVoice;
+  }
+  if (!("speechSynthesis" in window)) {
+    return null;
+  }
+  const voices = window.speechSynthesis.getVoices();
+  selectedVoice =
+    voices.find((voice) => voice.lang && voice.lang.toLowerCase().startsWith(currentLanguage.toLowerCase().slice(0, 2))) ||
+    voices[0] ||
+    null;
+  return selectedVoice;
 }
 
 function flushAssistantText(text) {
@@ -483,8 +640,15 @@ function flushUserText(text) {
 function endRealtimeCall(options = {}) {
   const keepTranscript = Boolean(options.keepTranscript);
   callActive = false;
+  if (!keepTranscript) {
+    fallbackMode = false;
+  }
+  if (recognition && recognizing) {
+    recognition.stop();
+  }
   pendingFunctionCalls.clear();
   handledFunctionCalls.clear();
+  fallbackMode = false;
   if (dataChannel) {
     dataChannel.close();
     dataChannel = null;
@@ -503,6 +667,7 @@ function endRealtimeCall(options = {}) {
     remoteAudio = null;
   }
   voiceButton.disabled = true;
+  voiceButton.textContent = ui().end;
   languageSelect.disabled = false;
   enableBackupInput(Boolean(sessionId && !lastState?.complete));
   if (!keepTranscript && sessionId && !lastState?.complete) {
@@ -515,6 +680,7 @@ function endRealtimeCall(options = {}) {
   } else {
     setCallMode("ready");
   }
+  updateConversationLayout();
 }
 
 function resetConversationUi() {
@@ -532,6 +698,7 @@ function resetConversationUi() {
   redFlagValue.textContent = ui().notScreened;
   identityValue.textContent = ui().notConfirmed;
   enableBackupInput(false);
+  updateConversationLayout();
 }
 
 function enableBackupInput(enabled) {
@@ -549,6 +716,7 @@ function addMessage(role, text) {
 
 function updateState(state) {
   lastState = state;
+  updateConversationLayout();
   stepValue.textContent = labelizeStep(state.step);
   painValue.textContent =
     state.pain?.score === null || state.pain?.score === undefined
@@ -576,6 +744,10 @@ function updateState(state) {
     voiceButton.disabled = true;
     setCallMode("complete");
   }
+}
+
+function updateConversationLayout() {
+  conversationPanel.classList.toggle("session-active", Boolean(sessionId));
 }
 
 function setCallMode(mode) {
@@ -645,7 +817,7 @@ function applyLanguage() {
   disclaimerText.textContent = text.disclaimer;
   languageLabel.textContent = text.language;
   startButton.textContent = sessionId ? text.restart : text.start;
-  voiceButton.textContent = text.end;
+  voiceButton.textContent = fallbackMode ? text.speak : text.end;
   messageInput.placeholder = text.inputPlaceholder;
   messageInput.setAttribute("aria-label", text.inputAria);
   sendButton.querySelector("span").textContent = text.send;
@@ -664,6 +836,15 @@ function applyLanguage() {
   } else if (lastState) {
     updateState(lastState);
   }
+  if (recognition && !recognizing) {
+    recognition.lang = currentLanguage;
+  }
 }
 
 applyLanguage();
+
+if ("speechSynthesis" in window) {
+  window.speechSynthesis.addEventListener("voiceschanged", () => {
+    selectedVoice = null;
+  });
+}

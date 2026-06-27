@@ -55,6 +55,11 @@ class PainAssessment:
     functional_impact: str | None = None
     usual_comparison: str = "unknown"
     patient_words: list[str] = field(default_factory=list)
+    active_vas_period: str | None = None
+    active_vas_low: int | None = None
+    active_vas_high: int | None = None
+    average_24h_vas_trace: list[dict[str, object]] = field(default_factory=list)
+    current_vas_trace: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass
@@ -131,6 +136,11 @@ class ConversationState:
                 "functional_impact": self.pain.functional_impact,
                 "usual_comparison": self.pain.usual_comparison,
                 "patient_words": self.pain.patient_words,
+                "active_vas_period": self.pain.active_vas_period,
+                "active_vas_low": self.pain.active_vas_low,
+                "active_vas_high": self.pain.active_vas_high,
+                "average_24h_vas_trace": self.pain.average_24h_vas_trace,
+                "current_vas_trace": self.pain.current_vas_trace,
             },
             "safety": {
                 "reported_symptoms": self.safety.reported_symptoms,

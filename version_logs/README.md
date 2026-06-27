@@ -15,6 +15,7 @@ Use this folder to backtrack:
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| [v0.4.2](./v0.4.2.md) | 2026-06-25 | Adds guided VAS/NRS pain-score calibration using binary comparisons against concrete OA pain scenarios. |
 | [v0.4.1](./v0.4.1.md) | 2026-06-25 | Refines bilingual spoken prompts with explicit clinical intent metadata while preserving deterministic validation and safety flow. |
 | [v0.4](./v0.4.md) | 2026-06-24 | Adds hybrid local STT plus OpenAI structured understanding and TTS for more natural voice calls. |
 | [v0.3](./v0.3.md) | 2026-06-18 | Adds optional local/private LLM wording polish and backend TTS audio pipeline with browser fallback. |

@@ -170,6 +170,9 @@ h2 {
   gap: 16px;
   padding: 34px 18px 24px;
   border-bottom: 1px solid var(--line);
+  transition:
+    padding 160ms ease,
+    gap 160ms ease;
 }
 
 .voice-orb {
@@ -232,6 +235,38 @@ h2 {
   justify-content: center;
 }
 
+.conversation-panel.session-active .call-stage {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  justify-items: start;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.conversation-panel.session-active .voice-orb {
+  width: 34px;
+  box-shadow: none;
+}
+
+.conversation-panel.session-active .voice-orb span {
+  width: 48%;
+}
+
+.conversation-panel.session-active .call-hint {
+  text-align: left;
+  font-size: 0.92rem;
+}
+
+.conversation-panel.session-active .call-actions {
+  justify-content: flex-end;
+}
+
+.conversation-panel.session-active .call-button {
+  min-width: 112px;
+  height: 36px;
+  padding: 0 12px;
+}
+
 .transcript {
   display: flex;
   flex-direction: column;
@@ -241,6 +276,10 @@ h2 {
   overflow: auto;
   padding: 18px;
   scroll-behavior: smooth;
+}
+
+.conversation-panel.session-active .transcript {
+  max-height: calc(100vh - 246px);
 }
 
 .message {
@@ -465,6 +504,19 @@ button:disabled {
 
   .conversation-panel {
     min-height: calc(100vh - 174px);
+  }
+
+  .conversation-panel.session-active .call-stage {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .conversation-panel.session-active .call-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .conversation-panel.session-active .call-actions button {
+    flex: 1;
   }
 
   .session-status {
