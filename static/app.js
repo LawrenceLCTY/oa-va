@@ -42,9 +42,11 @@ let pendingUserText = "";
 let pendingFunctionCalls = new Map();
 let handledFunctionCalls = new Set();
 let fallbackMode = false;
+let serverVoiceFallback = false;
 let recognition = null;
 let recognizing = false;
 let selectedVoice = null;
+let fallbackAudio = null;
 
 const UI = {
   "zh-CN": {
@@ -70,8 +72,9 @@ const UI = {
     callConnecting: "正在建立实时语音连接...",
     callLive: "可以直接说话。我会边听边回应。",
     callEnded: "通话已结束。",
-    realtimeUnavailable: "实时语音不可用。请确认已设置 OPENAI_API_KEY。",
-    fallbackStarted: "实时语音暂不可用，已切换到基础随访模式。",
+    realtimeUnavailable: "实时语音不可用，正在使用本地语音随访。",
+    fallbackStarted: "实时语音暂不可用，已切换到本地 Qwen 语音随访。",
+    browserFallbackStarted: "本地语音合成不可用，已切换到基础随访模式。",
     micUnavailable: "无法打开麦克风。请检查浏览器权限。",
     inputPlaceholder: "需要时可输入补充回答",
     inputAria: "补充回答",
@@ -142,8 +145,9 @@ const UI = {
     callConnecting: "Connecting realtime voice...",
     callLive: "You can speak naturally. I will listen and respond in real time.",
     callEnded: "Call ended.",
-    realtimeUnavailable: "Realtime voice is unavailable. Check OPENAI_API_KEY.",
-    fallbackStarted: "Realtime voice is unavailable, so I switched to the base check-in mode.",
+    realtimeUnavailable: "Realtime voice is unavailable, using local voice check-in.",
+    fallbackStarted: "Realtime voice is unavailable, so I switched to local Qwen voice check-in.",
+    browserFallbackStarted: "Local speech synthesis is unavailable, so I switched to the base check-in mode.",
     micUnavailable: "Could not open the microphone. Check browser permissions.",
     inputPlaceholder: "Type a backup answer if needed",
     inputAria: "Backup answer",
@@ -277,6 +281,7 @@ async function startRealtimeCall() {
 
 async function startBaseFallback(reason) {
   fallbackMode = true;
+  serverVoiceFallback = true;
   resetConversationUi();
   setCallMode("connecting");
   const response = await fetch("/api/start", {
@@ -567,6 +572,44 @@ async function speakFallbackQueue(messages) {
 }
 
 function speakFallback(text) {
+  if (serverVoiceFallback) {
+    return speakServerTts(text);
+  }
+  return speakBrowserTts(text);
+}
+
+async function speakServerTts(text) {
+  try {
+    const response = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, language: currentLanguage }),
+    });
+    if (!response.ok) {
+      throw new Error("server tts unavailable");
+    }
+    const blob = await response.blob();
+    const audioUrl = URL.createObjectURL(blob);
+    if (fallbackAudio) {
+      fallbackAudio.pause();
+      fallbackAudio = null;
+    }
+    fallbackAudio = new Audio(audioUrl);
+    setCallMode("speaking");
+    await new Promise((resolve) => {
+      fallbackAudio.onended = resolve;
+      fallbackAudio.onerror = resolve;
+      fallbackAudio.play().catch(resolve);
+    });
+    URL.revokeObjectURL(audioUrl);
+  } catch (error) {
+    serverVoiceFallback = false;
+    addMessage("system", ui().browserFallbackStarted);
+    await speakBrowserTts(text);
+  }
+}
+
+function speakBrowserTts(text) {
   if (!("speechSynthesis" in window)) {
     return Promise.resolve();
   }
@@ -584,6 +627,7 @@ function speakFallback(text) {
     utterance.onend = resolve;
     utterance.onerror = resolve;
     window.speechSynthesis.cancel();
+    setCallMode("speaking");
     window.speechSynthesis.speak(utterance);
   });
 }
@@ -649,6 +693,11 @@ function endRealtimeCall(options = {}) {
   pendingFunctionCalls.clear();
   handledFunctionCalls.clear();
   fallbackMode = false;
+  serverVoiceFallback = false;
+  if (fallbackAudio) {
+    fallbackAudio.pause();
+    fallbackAudio = null;
+  }
   if (dataChannel) {
     dataChannel.close();
     dataChannel = null;

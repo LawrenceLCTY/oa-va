@@ -15,6 +15,7 @@ Use this folder to backtrack:
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| [v0.5](./v0.5.md) | 2026-06-29 | Adds OpenAI Realtime plus Qwen3-TTS fallback, and records the pivot toward true full-duplex V2V after stakeholder UX review. |
 | [v0.4.2](./v0.4.2.md) | 2026-06-25 | Adds guided VAS/NRS pain-score calibration using binary comparisons against concrete OA pain scenarios. |
 | [v0.4.1](./v0.4.1.md) | 2026-06-25 | Refines bilingual spoken prompts with explicit clinical intent metadata while preserving deterministic validation and safety flow. |
 | [v0.4](./v0.4.md) | 2026-06-24 | Adds hybrid local STT plus OpenAI structured understanding and TTS for more natural voice calls. |

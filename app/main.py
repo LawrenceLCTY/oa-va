@@ -53,7 +53,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
                     },
                     "fallback": {
                         "enabled": True,
-                        "mode": "deterministic scripted conversation with browser speech/typed input",
+                        "mode": "deterministic clinical conversation with Qwen3-TTS server speech, then browser speech/typed input",
                     },
                 }
             )

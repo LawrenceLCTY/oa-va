@@ -15,7 +15,7 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The browser UI is voice-first. v0.5 uses OpenAI Realtime over WebRTC for low-latency speech-to-speech conversation, while the local deterministic clinical engine still controls protocol flow, red-flag escalation, and report generation. Text is kept as a transcript and backup input, not the primary interaction.
+The browser UI is voice-first. v0.5 uses OpenAI Realtime over WebRTC for low-latency speech-to-speech conversation when available. If OpenAI is unavailable, it falls back to the local deterministic clinical engine with Qwen3-TTS server speech. Browser speech/typed input is the final fallback. The local deterministic clinical engine still controls protocol flow, red-flag escalation, and report generation in every mode.
 
 v0.2 adds a language selector for:
 
@@ -112,7 +112,32 @@ The default model path is:
 
 ## Local TTS
 
-v0.4 uses OpenAI TTS by default for `/api/tts`. Kokoro local TTS is no longer required.
+v0.5 uses Qwen3-TTS as the local server speech fallback for `/api/tts` when the model exists locally. The default path is:
+
+```text
+/home/lawrencelcty/huggingface/models/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+```
+
+Install the runtime in the Python environment that runs the app:
+
+```bash
+python3 -m pip install -U qwen-tts
+```
+
+Optional local TTS overrides:
+
+```bash
+export QWEN_TTS_MODEL="/path/to/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+export QWEN_TTS_DEVICE="cuda:0"
+export QWEN_TTS_DTYPE="bfloat16"
+export QWEN_TTS_ZH_SPEAKER="Vivian"
+export QWEN_TTS_EN_SPEAKER="Ryan"
+export QWEN_TTS_FLASH_ATTENTION=1
+```
+
+OpenAI TTS is still tried first when `ENABLE_OPENAI_TTS=1` and `OPENAI_API_KEY` is set. Set `ENABLE_QWEN_TTS=0` to disable the Qwen fallback.
+
+Kokoro local TTS is no longer required.
 
 Only enable the old Kokoro fallback if you intentionally reinstall the model:
 
