@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Assistant Architecture Tradeoffs</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --text: #172033;
+      --muted: #5c667a;
+      --border: #d8dde8;
+      --header: #eef3f8;
+      --recommended: #eaf7ef;
+      --recommended-border: #59a873;
+      --good: #1f8f4d;
+      --medium: #a96b00;
+      --poor: #b42318;
+      --bg: #ffffff;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      line-height: 1.35;
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      border: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--border);
+      padding: 11px 12px;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--header);
+      text-align: left;
+      font-weight: 700;
+    }
+
+    th:nth-child(1) { width: 18%; }
+    th:nth-child(2),
+    th:nth-child(3),
+    th:nth-child(4),
+    th:nth-child(5),
+    th:nth-child(6) { width: 10%; }
+    th:nth-child(7) { width: 18%; }
+    th:nth-child(8) { width: 14%; }
+
+    .arch {
+      font-weight: 700;
+    }
+
+    .detail {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .score {
+      display: inline-block;
+      min-width: 72px;
+      font-weight: 700;
+    }
+
+    .good { color: var(--good); }
+    .medium { color: var(--medium); }
+    .poor { color: var(--poor); }
+
+    tr.recommended {
+      background: var(--recommended);
+      box-shadow: inset 4px 0 0 var(--recommended-border);
+    }
+
+    .tag {
+      display: inline-block;
+      margin-bottom: 4px;
+      padding: 2px 7px;
+      border: 1px solid var(--recommended-border);
+      border-radius: 999px;
+      color: #27623c;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .note {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      font-size: 14px;
+    }
+
+    @media print {
+      body {
+        padding: 12px;
+      }
+
+      table {
+        font-size: 11px;
+      }
+
+      th,
+      td {
+        padding: 7px 8px;
+      }
+
+      .subtitle,
+      .note {
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Voice Assistant Architecture Tradeoffs</h1>
+    <p class="subtitle">
+      Stakeholder summary: no single architecture maximizes latency, privacy, quality, safety, openness, and cost at the same time.
+    </p>
+
+    <table aria-label="Voice assistant architecture tradeoff table">
+      <thead>
+        <tr>
+          <th>Architecture</th>
+          <th>Live Conversation Feel</th>
+          <th>Voice Quality</th>
+          <th>Clinical Safety Control</th>
+          <th>Privacy / Data Control</th>
+          <th>Cost</th>
+          <th>Best Use</th>
+          <th>Main Compromise</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <span class="arch">Browser Voice + Deterministic Engine</span>
+            <span class="detail">Browser STT/TTS, local protocol engine</span>
+          </td>
+          <td><span class="score medium">Medium</span></td>
+          <td><span class="score poor">Basic</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score medium">Medium</span></td>
+          <td><span class="score good">Very low</span></td>
+          <td>Fallback mode, cheapest demo, low setup</td>
+          <td>Voice and transcription quality vary by browser and device.</td>
+        </tr>
+
+        <tr>
+          <td>
+            <span class="arch">Local Open-Source Pipeline</span>
+            <span class="detail">Local STT -> deterministic engine -> local TTS</span>
+          </td>
+          <td><span class="score medium">Medium</span></td>
+          <td><span class="score medium">Good</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score medium">Low to medium</span></td>
+          <td>Private data, open-source preference, auditability</td>
+          <td>Needs GPU/model operations; less smooth than realtime cloud voice.</td>
+        </tr>
+
+        <tr>
+          <td>
+            <span class="arch">Cloud Cascaded Pipeline</span>
+            <span class="detail">Cloud STT/LLM/TTS, local clinical engine</span>
+          </td>
+          <td><span class="score medium">Medium</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score medium">Medium</span></td>
+          <td><span class="score medium">Medium</span></td>
+          <td>Good production quality without heavy local model ops</td>
+          <td>Recurring vendor cost and privacy/compliance review.</td>
+        </tr>
+
+        <tr>
+          <td>
+            <span class="arch">Realtime Cloud Voice + Clinical Tools</span>
+            <span class="detail">Live speech-to-speech, local tool/state callbacks</span>
+          </td>
+          <td><span class="score good">Best</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score medium">Medium-high</span></td>
+          <td><span class="score medium">Medium</span></td>
+          <td><span class="score poor">High</span></td>
+          <td>Most natural call experience and stakeholder demos</td>
+          <td>Best UX, but highest vendor dependency and usage cost.</td>
+        </tr>
+
+        <tr>
+          <td>
+            <span class="arch">Local End-to-End Audio Model</span>
+            <span class="detail">Covo-style private voice-to-voice service</span>
+          </td>
+          <td><span class="score medium">Promising</span></td>
+          <td><span class="score good">Potentially high</span></td>
+          <td><span class="score medium">Medium</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score poor">GPU-heavy</span></td>
+          <td>Research path toward private natural voice</td>
+          <td>Experimental, harder to audit, and operationally heavy.</td>
+        </tr>
+
+        <tr>
+          <td>
+            <span class="arch">Fine-Tuned Monolithic Chatbot</span>
+            <span class="detail">One model controls conversation and advice</span>
+          </td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score poor">Risky</span></td>
+          <td><span class="score medium">Depends</span></td>
+          <td><span class="score poor">High</span></td>
+          <td>Not recommended as clinical authority</td>
+          <td>Hard to prove no hallucination, no missed fields, and safe escalation.</td>
+        </tr>
+
+        <tr class="recommended">
+          <td>
+            <span class="tag">Recommended</span><br>
+            <span class="arch">Hybrid Safety-First Architecture</span>
+            <span class="detail">Deterministic clinical core + swappable voice/model backends</span>
+          </td>
+          <td><span class="score good">Configurable</span></td>
+          <td><span class="score good">Configurable</span></td>
+          <td><span class="score good">High</span></td>
+          <td><span class="score good">Configurable</span></td>
+          <td><span class="score medium">Configurable</span></td>
+          <td>Realistic production path across demos, pilots, and private deployment</td>
+          <td>Requires product choice per deployment: fastest, cheapest, and most private cannot all be maximized together.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <strong>Bottom line:</strong> keep the clinical workflow, red-flag escalation, and doctor report deterministic. Use cloud realtime voice when the priority is the smoothest user experience; use local open-source models when the priority is private data and deployment control.
+    </div>
+  </main>
+</body>
+</html>

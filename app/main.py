@@ -6,11 +6,12 @@ import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from dotenv import load_dotenv
 
 from app.conversation import ConversationEngine
+from app.covo import CovoClient
 from app.i18n import intent
 from app.openai_client import OpenAIClient
 from app.schemas import ConversationState
@@ -29,6 +30,7 @@ ENGINE = ConversationEngine()
 TTS = LocalTTS()
 STT = LocalSTT()
 OPENAI = OpenAIClient()
+COVO = CovoClient()
 
 
 class OARequestHandler(BaseHTTPRequestHandler):
@@ -51,6 +53,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
                         "model": openai_status.get("realtime_model"),
                         "voice": openai_status.get("realtime_voice"),
                     },
+                    "covo": COVO.status(),
                     "fallback": {
                         "enabled": True,
                         "mode": "deterministic clinical conversation with Qwen3-TTS server speech, then browser speech/typed input",
@@ -184,6 +187,84 @@ class OARequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if parsed.path == "/api/covo/start":
+            data = self._read_json()
+            language = str(data.get("language", "en"))
+            state = ENGINE.start(language=language)
+            SESSIONS[state.session_id] = state
+            assistant_messages = [
+                item["text"]
+                for item in state.transcript
+                if item.get("role") == "assistant"
+            ]
+            self._send_json(
+                {
+                    "session_id": state.session_id,
+                    "assistant_messages": assistant_messages,
+                    "spoken_instruction": _spoken_instruction(assistant_messages, state.step, state.complete),
+                    "state": state.to_dict(),
+                    "covo": COVO.status(),
+                }
+            )
+            return
+
+        if parsed.path == "/api/covo/turn":
+            audio, filename = self._read_audio_upload()
+            session_id = self.headers.get("X-Session-Id", "")
+            language = self.headers.get("X-Language", "en")
+            fallback_text = unquote(self.headers.get("X-Transcript", ""))
+            state = SESSIONS.get(session_id)
+            if not state:
+                self._send_json({"error": "session not found"}, HTTPStatus.NOT_FOUND)
+                return
+
+            covo_result = None
+            if COVO.enabled:
+                last_prompt = _last_assistant_message(state)
+                covo_result = COVO.process_turn(
+                    audio,
+                    filename=filename,
+                    language=language,
+                    session_id=session_id,
+                    prompt=last_prompt,
+                    state=state.to_dict(),
+                )
+            transcript = (covo_result.transcript if covo_result else None) or fallback_text.strip()
+            if not transcript:
+                self._send_json(
+                    {
+                        "error": (covo_result.error if covo_result else None) or "Covo did not return a transcript",
+                        "covo": COVO.status(),
+                    },
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+
+            before = len(state.transcript)
+            ENGINE.handle_user_message(state, transcript)
+            assistant_messages = [
+                item["text"]
+                for item in state.transcript[before:]
+                if item.get("role") == "assistant"
+            ]
+            self._send_json(
+                {
+                    "ok": True,
+                    "session_id": state.session_id,
+                    "transcript": transcript,
+                    "assistant_messages": assistant_messages,
+                    "spoken_instruction": _spoken_instruction(assistant_messages, state.step, state.complete),
+                    "state": state.to_dict(),
+                    "covo": {
+                        "used": bool(covo_result and covo_result.transcript),
+                        "error": covo_result.error if covo_result else None,
+                        "audio_available": bool(covo_result and covo_result.audio),
+                        "content_type": covo_result.content_type if covo_result else "audio/wav",
+                    },
+                }
+            )
+            return
+
         if parsed.path == "/api/save_report":
             data = self._read_json()
             session_id = str(data.get("session_id", ""))
@@ -301,6 +382,13 @@ def _spoken_instruction(assistant_messages: list[str], step: str, complete: bool
         "Say this next required clinical line naturally and briefly. Preserve all clinical meaning, "
         f"numbers, and safety wording.{intent_clause} Required line: {required}"
     )
+
+
+def _last_assistant_message(state: ConversationState) -> str:
+    for item in reversed(state.transcript):
+        if item.get("role") == "assistant":
+            return item.get("text", "")
+    return ""
 
 
 def _prompt_key_for_step(step: str) -> str:
