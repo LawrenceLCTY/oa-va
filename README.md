@@ -15,7 +15,7 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The browser UI is voice-first. v0.5 uses OpenAI Realtime over WebRTC for low-latency speech-to-speech conversation when available. If OpenAI is unavailable, it falls back to the local deterministic clinical engine with Qwen3-TTS server speech. Browser speech/typed input is the final fallback. The local deterministic clinical engine still controls protocol flow, red-flag escalation, and report generation in every mode.
+The browser UI is voice-first. v0.6 adds an experimental Covo half-duplex mode for audio turn recording while the local deterministic clinical engine still controls protocol flow, red-flag escalation, and report generation. If a Covo service is not configured, the browser can still test the same half-duplex flow using browser transcript capture plus server/browser speech fallback. v0.5 OpenAI Realtime code remains available as a fallback path.
 
 v0.2 adds a language selector for:
 
@@ -25,6 +25,61 @@ v0.2 adds a language selector for:
 Chinese mode uses an independent Chinese UI, Chinese call script, Chinese speech recognition language setting, Chinese text-to-speech voice preference, and Chinese-aware validation/red-flag rules.
 
 Final doctor reports are generated as formatted JSON with stable English keys for easier downstream machine processing.
+
+## v0.6 Covo Half-Duplex Experiment
+
+v0.6 pivots toward a hybrid voice-to-voice architecture:
+
+- Browser records one patient turn at a time.
+- The backend sends audio to an optional Covo half-duplex service.
+- The returned transcript is passed into the deterministic OA clinical engine.
+- The required next clinical line is spoken using server TTS or browser TTS.
+- The Covo model is treated as the voice interface, not the clinical authority.
+
+The public Tencent Covo-Audio release currently supports half-duplex/offline inference, not the unreleased `Covo-Audio-Chat-FD` runtime. The OA app therefore integrates through a lightweight HTTP service contract instead of loading the 7B model in the main app process.
+
+Optional Covo settings:
+
+```bash
+export ENABLE_COVO=1
+export COVO_ENDPOINT="http://api.datummed.com:PORT"
+export COVO_MODEL_DIR="/hdd-storage/lawrencelcty/huggingface/models/Covo-Audio/covoaudio"
+export COVO_DEVICE="cuda:2,cuda:3"
+export COVO_TIMEOUT_SECONDS=120
+```
+
+Expected Covo service contract:
+
+```text
+POST {COVO_ENDPOINT}/turn
+Content-Type: application/json
+```
+
+Request JSON:
+
+```json
+{
+  "session_id": "uuid",
+  "language": "zh-CN",
+  "filename": "speech.webm",
+  "audio_b64": "...",
+  "audio_content_type": "audio/webm",
+  "clinical_prompt": "last required OA prompt",
+  "state": {}
+}
+```
+
+Response JSON:
+
+```json
+{
+  "transcript": "patient answer text",
+  "audio_b64": "optional assistant audio",
+  "audio_content_type": "audio/wav"
+}
+```
+
+Until `COVO_ENDPOINT` is available, `/api/covo/turn` can use the browser-captured transcript to exercise the same OA state-machine path without GPU inference.
 
 ## v0.5 Realtime Voice Pipeline
 

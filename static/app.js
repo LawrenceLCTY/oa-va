@@ -43,6 +43,11 @@ let pendingFunctionCalls = new Map();
 let handledFunctionCalls = new Set();
 let fallbackMode = false;
 let serverVoiceFallback = false;
+let covoMode = false;
+let covoRecorder = null;
+let covoAudioChunks = [];
+let covoTranscriptDraft = "";
+let discardCovoRecording = false;
 let recognition = null;
 let recognizing = false;
 let selectedVoice = null;
@@ -66,6 +71,8 @@ const UI = {
     start: "开始语音随访",
     restart: "重新开始",
     end: "结束",
+    recordTurn: "开始回答",
+    stopTurn: "结束回答",
     speak: "说话",
     stopMic: "停止",
     callReady: "准备好后开始语音随访。",
@@ -74,6 +81,9 @@ const UI = {
     callEnded: "通话已结束。",
     realtimeUnavailable: "实时语音不可用，正在使用本地语音随访。",
     fallbackStarted: "实时语音暂不可用，已切换到本地 Qwen 语音随访。",
+    covoStarted: "已进入 Covo 半双工实验模式。请按“开始回答”，说完后按“结束回答”。",
+    covoUnavailable: "Covo 服务不可用，正在使用本地语音随访。",
+    covoRecordHint: "按“开始回答”后说一句完整回答，说完再结束。",
     browserFallbackStarted: "本地语音合成不可用，已切换到基础随访模式。",
     micUnavailable: "无法打开麦克风。请检查浏览器权限。",
     inputPlaceholder: "需要时可输入补充回答",
@@ -139,6 +149,8 @@ const UI = {
     start: "Start Voice Check-in",
     restart: "Restart",
     end: "End",
+    recordTurn: "Start Answer",
+    stopTurn: "Stop Answer",
     speak: "Speak",
     stopMic: "Stop",
     callReady: "Start when you are ready to speak.",
@@ -147,6 +159,9 @@ const UI = {
     callEnded: "Call ended.",
     realtimeUnavailable: "Realtime voice is unavailable, using local voice check-in.",
     fallbackStarted: "Realtime voice is unavailable, so I switched to local Qwen voice check-in.",
+    covoStarted: "Covo half-duplex experiment is active. Press Start Answer, speak one complete answer, then stop.",
+    covoUnavailable: "Covo service is unavailable, so I switched to local voice check-in.",
+    covoRecordHint: "Press Start Answer, speak one complete answer, then stop.",
     browserFallbackStarted: "Local speech synthesis is unavailable, so I switched to the base check-in mode.",
     micUnavailable: "Could not open the microphone. Check browser permissions.",
     inputPlaceholder: "Type a backup answer if needed",
@@ -194,8 +209,17 @@ if (SpeechRecognition) {
     }
   });
   recognition.addEventListener("result", (event) => {
-    const text = event.results[event.results.length - 1][0].transcript.trim();
+    const texts = Array.from(event.results)
+      .slice(event.resultIndex)
+      .filter((result) => result.isFinal)
+      .map((result) => result[0].transcript.trim())
+      .filter(Boolean);
+    const text = texts.join(" ").trim();
     if (text) {
+      if (covoMode) {
+        covoTranscriptDraft = `${covoTranscriptDraft} ${text}`.trim();
+        return;
+      }
       messageInput.value = "";
       addMessage("user", text);
       submitTypedAnswer(text);
@@ -204,10 +228,14 @@ if (SpeechRecognition) {
 }
 
 startButton.addEventListener("click", async () => {
-  await startRealtimeCall();
+  await startCovoCall();
 });
 
 voiceButton.addEventListener("click", () => {
+  if (covoMode) {
+    toggleCovoTurnRecording();
+    return;
+  }
   if (fallbackMode) {
     toggleFallbackMic();
     return;
@@ -309,6 +337,46 @@ async function startBaseFallback(reason) {
   }
   await speakFallbackQueue(payload.assistant_messages || []);
   setCallMode(lastState?.complete ? "complete" : "ready");
+}
+
+async function startCovoCall() {
+  if (callActive) {
+    endRealtimeCall();
+  }
+  resetConversationUi();
+  covoMode = true;
+  serverVoiceFallback = true;
+  setCallMode("connecting");
+  try {
+    const response = await fetch("/api/covo/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: currentLanguage }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || ui().covoUnavailable);
+    }
+    sessionId = payload.session_id;
+    callActive = true;
+    updateConversationLayout();
+    updateState(payload.state);
+    enableBackupInput(true);
+    voiceButton.disabled = false;
+    voiceButton.textContent = ui().recordTurn;
+    languageSelect.disabled = true;
+    startButton.textContent = ui().restart;
+    addMessage("system", ui().covoStarted);
+    for (const message of payload.assistant_messages || []) {
+      addMessage("assistant", message);
+    }
+    await speakFallbackQueue(payload.assistant_messages || []);
+    setCallMode(lastState?.complete ? "complete" : "ready");
+  } catch (error) {
+    console.error(error);
+    endRealtimeCall({ keepTranscript: true });
+    await startBaseFallback(error.message || ui().covoUnavailable);
+  }
 }
 
 async function createRealtimeSession() {
@@ -521,6 +589,10 @@ async function runClinicalTool(name, args) {
 
 async function submitTypedAnswer(text) {
   setCallMode("processing");
+  if (covoMode) {
+    await submitFallbackAnswer(text);
+    return;
+  }
   if (fallbackMode) {
     await submitFallbackAnswer(text);
     return;
@@ -650,6 +722,120 @@ function toggleFallbackMic() {
   }
 }
 
+async function toggleCovoTurnRecording() {
+  if (!sessionId || lastState?.complete) {
+    return;
+  }
+  if (covoRecorder && covoRecorder.state === "recording") {
+    covoRecorder.stop();
+    voiceButton.textContent = ui().recordTurn;
+    if (recognition && recognizing) {
+      recognition.stop();
+    }
+    return;
+  }
+  try {
+    if (!localStream) {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    }
+    covoAudioChunks = [];
+    covoTranscriptDraft = "";
+    const mimeType = preferredRecordingMimeType();
+    covoRecorder = new MediaRecorder(localStream, mimeType ? { mimeType } : undefined);
+    discardCovoRecording = false;
+    covoRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) {
+        covoAudioChunks.push(event.data);
+      }
+    });
+    covoRecorder.addEventListener("stop", submitCovoRecordedTurn);
+    covoRecorder.start();
+    startCovoSpeechRecognition();
+    voiceButton.textContent = ui().stopTurn;
+    setCallMode("listening");
+  } catch (error) {
+    addMessage("system", ui().micUnavailable);
+    setCallMode("error");
+  }
+}
+
+function preferredRecordingMimeType() {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function startCovoSpeechRecognition() {
+  if (!recognition) {
+    return;
+  }
+  try {
+    recognition.lang = currentLanguage;
+    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.start();
+  } catch (error) {
+    return;
+  }
+}
+
+async function submitCovoRecordedTurn() {
+  if (discardCovoRecording) {
+    discardCovoRecording = false;
+    covoAudioChunks = [];
+    setCallMode(sessionId ? "ready" : "ended");
+    return;
+  }
+  if (!sessionId || !covoMode || !covoAudioChunks.length) {
+    setCallMode("ready");
+    return;
+  }
+  setCallMode("processing");
+  const mimeType = covoRecorder?.mimeType || preferredRecordingMimeType() || "audio/webm";
+  const blob = new Blob(covoAudioChunks, { type: mimeType });
+  covoAudioChunks = [];
+  const filename = mimeType.includes("ogg") ? "speech.ogg" : "speech.webm";
+  try {
+    const response = await fetch("/api/covo/turn", {
+      method: "POST",
+      headers: {
+        "Content-Type": mimeType,
+        "X-Filename": filename,
+        "X-Session-Id": sessionId,
+        "X-Language": currentLanguage,
+        "X-Transcript": encodeHeaderValue(covoTranscriptDraft),
+      },
+      body: blob,
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || ui().covoUnavailable);
+    }
+    const transcript = payload.transcript || covoTranscriptDraft;
+    if (transcript) {
+      addMessage("user", transcript);
+    }
+    updateState(payload.state);
+    for (const message of payload.assistant_messages || []) {
+      addMessage("assistant", message);
+    }
+    await speakFallbackQueue(payload.assistant_messages || []);
+    setCallMode(lastState?.complete ? "complete" : "ready");
+  } catch (error) {
+    addMessage("system", error.message || ui().covoUnavailable);
+    setCallMode("error");
+  }
+}
+
+function encodeHeaderValue(value) {
+  return encodeURIComponent(value || "").slice(0, 1800);
+}
+
 function getPreferredVoice() {
   if (selectedVoice) {
     return selectedVoice;
@@ -694,6 +880,14 @@ function endRealtimeCall(options = {}) {
   handledFunctionCalls.clear();
   fallbackMode = false;
   serverVoiceFallback = false;
+  covoMode = false;
+  covoAudioChunks = [];
+  covoTranscriptDraft = "";
+  if (covoRecorder && covoRecorder.state === "recording") {
+    discardCovoRecording = true;
+    covoRecorder.stop();
+  }
+  covoRecorder = null;
   if (fallbackAudio) {
     fallbackAudio.pause();
     fallbackAudio = null;
@@ -740,6 +934,8 @@ function resetConversationUi() {
   pendingUserText = "";
   pendingFunctionCalls.clear();
   handledFunctionCalls.clear();
+  covoAudioChunks = [];
+  covoTranscriptDraft = "";
   reportOutput.textContent = ui().reportPending;
   saveReportButton.disabled = true;
   stepValue.textContent = ui().notStarted;
@@ -826,7 +1022,7 @@ function setCallMode(mode) {
     callHint.textContent = ui().callEnded;
     setStatus(ui().ready, "idle");
   } else {
-    callHint.textContent = ui().callReady;
+    callHint.textContent = covoMode ? ui().covoRecordHint : ui().callReady;
     setStatus(ui().ready, "idle");
   }
 }
@@ -866,7 +1062,7 @@ function applyLanguage() {
   disclaimerText.textContent = text.disclaimer;
   languageLabel.textContent = text.language;
   startButton.textContent = sessionId ? text.restart : text.start;
-  voiceButton.textContent = fallbackMode ? text.speak : text.end;
+  voiceButton.textContent = covoMode ? text.recordTurn : fallbackMode ? text.speak : text.end;
   messageInput.placeholder = text.inputPlaceholder;
   messageInput.setAttribute("aria-label", text.inputAria);
   sendButton.querySelector("span").textContent = text.send;
