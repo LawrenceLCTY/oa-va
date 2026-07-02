@@ -5,7 +5,6 @@ Local prototype for an osteoarthritis home pain monitoring voice assistant.
 ## Run
 
 ```bash
-export OPENAI_API_KEY="sk-..."
 python3 -m app.main
 ```
 
@@ -15,7 +14,17 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The browser UI is voice-first. v0.6 adds an experimental Covo half-duplex mode for audio turn recording while the local deterministic clinical engine still controls protocol flow, red-flag escalation, and report generation. If a Covo service is not configured, the browser can still test the same half-duplex flow using browser transcript capture plus server/browser speech fallback. v0.5 OpenAI Realtime code remains available as a fallback path.
+The browser UI is voice-first. v0.7 makes the default runtime a private explainable voice pipeline:
+
+```text
+browser recorded patient turn
+  -> local STT through SenseVoiceSmall when available
+  -> local Qwen-compatible structured extraction when available
+  -> deterministic OA clinical engine
+  -> local Qwen3-TTS or browser speech output
+```
+
+The deterministic clinical engine still controls protocol flow, validation, red-flag escalation, and report generation. Model layers are adapters for transcription, structured extraction, wording, and speech. Browser transcript capture remains a development fallback when local STT is unavailable.
 
 v0.2 adds a language selector for:
 
@@ -26,9 +35,45 @@ Chinese mode uses an independent Chinese UI, Chinese call script, Chinese speech
 
 Final doctor reports are generated as formatted JSON with stable English keys for easier downstream machine processing.
 
+## v0.7 Private Explainable Pipeline
+
+v0.7 is the production architecture target for private data:
+
+- Browser records one patient answer turn at a time.
+- The backend sends audio to local STT (`SenseVoiceSmall`) when configured.
+- The browser transcript is accepted as a fallback for development.
+- A local Qwen-compatible model can extract structured slots.
+- The deterministic OA engine decides the next required clinical step.
+- The required next clinical line is spoken using local/server TTS, then browser TTS fallback.
+
+Start the optional local Qwen-compatible extractor:
+
+```bash
+python3 -m app.qwen_server
+```
+
+Then start the main app in another terminal:
+
+```bash
+export ENABLE_LOCAL_UNDERSTANDING=1
+export PREFER_LOCAL_STT=1
+export PREFER_SERVER_TTS=1
+python3 -m app.main
+```
+
+Useful local model settings:
+
+```bash
+export LOCAL_LLM_URL="http://127.0.0.1:8001/v1/chat/completions"
+export LOCAL_LLM_MODEL="/home/lawrencelcty/huggingface/models/Qwen/Qwen3-0.6B-FP8"
+export ENABLE_LOCAL_REPLY_REWRITE=0
+```
+
+See `docs/v0.7-private-pipeline.md` for model contracts, streaming roadmap, and Covo/GLM research notes.
+
 ## v0.6 Covo Half-Duplex Experiment
 
-v0.6 pivots toward a hybrid voice-to-voice architecture:
+v0.6 is now a research/legacy path. It explored a hybrid voice-to-voice architecture:
 
 - Browser records one patient turn at a time.
 - The backend sends audio to an optional Covo half-duplex service.

@@ -8,7 +8,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.conversation import ConversationEngine
+from app.local_ai import LocalClinicalAI
 from app.openai_client import UnderstandingResult
+from app.private_pipeline import PrivateVoicePipeline
 
 
 class FakeSlotAI:
@@ -93,6 +95,48 @@ class FakeClarifyingAI:
     ) -> str | None:
         self.calls.append((language, step, patient_text, clinical_prompt, reason))
         return "I hear that it feels bad. To record it consistently, please choose a number from 0 to 10."
+
+
+class FakeSTT:
+    def status(self):
+        return {"enabled": True, "engine": "fake"}
+
+    def transcribe(self, audio: bytes, filename: str, language: str):
+        return None, "fake stt unavailable"
+
+
+class FakeTTS:
+    def status(self):
+        return {"enabled": True, "engine": "fake"}
+
+
+def run_local_ai_rule_fallback() -> None:
+    ai = LocalClinicalAI()
+    ai.url = "http://127.0.0.1:9/v1/chat/completions"
+    result = ai.understand("side_effects", "en", "I have chest pain and shortness of breath")
+
+    assert result is not None
+    assert "chest pain" in (result.red_flags or [])
+    assert "trouble breathing" in (result.red_flags or [])
+
+
+def run_private_pipeline_browser_transcript_fallback() -> None:
+    engine = ConversationEngine()
+    pipeline = PrivateVoicePipeline(engine, FakeSTT(), FakeTTS())
+    state = engine.start(language="en")
+    result = pipeline.process_turn(
+        state,
+        b"fake audio",
+        filename="speech.webm",
+        language="en",
+        fallback_text="My name is Mary Tan, my mobile is 91234567, and I am 72 years old.",
+    )
+
+    assert result.transcript_source == "browser_transcript"
+    assert state.identity.name == "Mary Tan"
+    assert state.step == "respondent_source"
+    assert "stt_ms" in result.timings
+    assert "clinical_engine_ms" in result.timings
 
 
 def run_natural_start_check_in() -> None:
@@ -443,6 +487,8 @@ def run_side_effect_detail_check_in() -> None:
 
 
 if __name__ == "__main__":
+    run_local_ai_rule_fallback()
+    run_private_pipeline_browser_transcript_fallback()
     run_natural_start_check_in()
     run_llm_slot_filling_check_in()
     run_llm_guided_clarification()

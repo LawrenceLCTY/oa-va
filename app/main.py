@@ -13,7 +13,9 @@ from dotenv import load_dotenv
 from app.conversation import ConversationEngine
 from app.covo import CovoClient
 from app.i18n import intent
+from app.local_ai import LocalClinicalAI
 from app.openai_client import OpenAIClient
+from app.private_pipeline import PrivateVoicePipeline
 from app.schemas import ConversationState
 from app.stt import LocalSTT
 from app.tts import LocalTTS
@@ -26,11 +28,13 @@ REPORTS_DIR = ROOT_DIR / "reports"
 load_dotenv(ROOT_DIR / ".env")
 
 SESSIONS: dict[str, ConversationState] = {}
-ENGINE = ConversationEngine()
+LOCAL_AI = LocalClinicalAI()
+ENGINE = ConversationEngine(ai=LOCAL_AI)
 TTS = LocalTTS()
 STT = LocalSTT()
 OPENAI = OpenAIClient()
 COVO = CovoClient()
+PRIVATE_PIPELINE = PrivateVoicePipeline(ENGINE, STT, TTS)
 
 
 class OARequestHandler(BaseHTTPRequestHandler):
@@ -54,9 +58,11 @@ class OARequestHandler(BaseHTTPRequestHandler):
                         "voice": openai_status.get("realtime_voice"),
                     },
                     "covo": COVO.status(),
+                    "private_pipeline": PRIVATE_PIPELINE.status(),
+                    "local_ai": LOCAL_AI.status(),
                     "fallback": {
                         "enabled": True,
-                        "mode": "deterministic clinical conversation with Qwen3-TTS server speech, then browser speech/typed input",
+                        "mode": "v0.7 private explainable pipeline with deterministic clinical conversation, local STT/TTS, and browser transcript fallback",
                     },
                 }
             )
@@ -183,6 +189,73 @@ class OARequestHandler(BaseHTTPRequestHandler):
                     "assistant_messages": assistant_messages,
                     "spoken_instruction": _spoken_instruction(assistant_messages, state.step, state.complete),
                     "state": state.to_dict(),
+                }
+            )
+            return
+
+        if parsed.path == "/api/private/start":
+            data = self._read_json()
+            language = str(data.get("language", "en"))
+            state = ENGINE.start(language=language)
+            SESSIONS[state.session_id] = state
+            assistant_messages = [
+                item["text"]
+                for item in state.transcript
+                if item.get("role") == "assistant"
+            ]
+            self._send_json(
+                {
+                    "session_id": state.session_id,
+                    "assistant_messages": assistant_messages,
+                    "spoken_instruction": _spoken_instruction(assistant_messages, state.step, state.complete),
+                    "state": state.to_dict(),
+                    "pipeline": PRIVATE_PIPELINE.status(),
+                }
+            )
+            return
+
+        if parsed.path == "/api/private/turn":
+            audio, filename = self._read_audio_upload()
+            session_id = self.headers.get("X-Session-Id", "")
+            language = self.headers.get("X-Language", "en")
+            fallback_text = unquote(self.headers.get("X-Transcript", ""))
+            state = SESSIONS.get(session_id)
+            if not state:
+                self._send_json({"error": "session not found"}, HTTPStatus.NOT_FOUND)
+                return
+
+            result = PRIVATE_PIPELINE.process_turn(
+                state,
+                audio,
+                filename=filename,
+                language=language,
+                fallback_text=fallback_text,
+            )
+            if not result.transcript:
+                self._send_json(
+                    {
+                        "error": "; ".join(result.errors) or "private pipeline did not produce a transcript",
+                        "pipeline": PRIVATE_PIPELINE.status(),
+                        "timings": result.timings,
+                    },
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
+
+            self._send_json(
+                {
+                    "ok": True,
+                    "session_id": state.session_id,
+                    "transcript": result.transcript,
+                    "transcript_source": result.transcript_source,
+                    "assistant_messages": result.assistant_messages,
+                    "spoken_instruction": _spoken_instruction(result.assistant_messages, state.step, state.complete),
+                    "state": state.to_dict(),
+                    "pipeline": {
+                        "mode": "private_explainable_pipeline",
+                        "errors": result.errors,
+                        "timings": result.timings,
+                    },
                 }
             )
             return
