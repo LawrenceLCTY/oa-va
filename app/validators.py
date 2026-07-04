@@ -252,6 +252,14 @@ def validate_treatment_answer(text: str) -> ValidationResult:
             "Are you using anything for the pain now?",
             {"zh-CN": "现在有用什么止痛办法吗？"},
         )
+    if _contains_any(cleaned, ("don't know", "do not know", "not sure")) or _contains_any(cleaned, ("不懂", "不知道", "不清楚")):
+        return ValidationResult(
+            ValidationAction.CLARIFY,
+            0.35,
+            "unclear_treatment_answer",
+            "Are you using any medicine, cream, injections, therapy, or nothing for the pain?",
+            {"zh-CN": "您现在有没有用药片、药膏、针剂、康复治疗，还是没有用任何止痛办法？"},
+        )
     if _contains_any(cleaned, NONSENSE_WORDS) and not _is_yes_no_or_unsure(cleaned):
         return ValidationResult(
             ValidationAction.CLARIFY,

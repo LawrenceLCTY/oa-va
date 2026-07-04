@@ -1,0 +1,286 @@
+{
+  "report_type": "oa_home_pain_check_in",
+  "schema_version": "1.0",
+  "assistant_version": "v0.3",
+  "generated_at": "2026-07-04T17:52:11",
+  "session": {
+    "session_id": "8cc1a797-58d5-4766-958b-db4250ce6f70",
+    "created_at": "2026-07-04T17:45:01",
+    "language": "zh-CN",
+    "complete": true,
+    "conversation_type": "Home monitoring OA pain check-in"
+  },
+  "patient_identity": {
+    "name": "王大明",
+    "mobile_number": "0123456789050",
+    "age": 50,
+    "status": "complete"
+  },
+  "readiness": {
+    "hearing_clear": "assumed",
+    "suitable_time": "assumed",
+    "permission_to_continue": "assumed",
+    "respondent_source": "participant_independently"
+  },
+  "pain_assessment": {
+    "scale": "0-10 VAS/NRS with optional binary scenario anchoring",
+    "average_24h_score": 9,
+    "average_24h_severity": "severe",
+    "average_24h_score_confirmed": true,
+    "average_24h_vas_trace": [
+      {
+        "low": 0,
+        "high": 10,
+        "midpoint": 5,
+        "choice": "higher",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "能想象到的最严重疼痛"
+      },
+      {
+        "low": 6,
+        "high": 10,
+        "midpoint": 8,
+        "choice": "higher",
+        "lower_anchor": "较明显的疼痛，正常活动会比较困难",
+        "higher_anchor": "能想象到的最严重疼痛"
+      },
+      {
+        "low": 9,
+        "high": 10,
+        "midpoint": 9,
+        "choice": "lower",
+        "lower_anchor": "极重疼痛，几乎难以进行正常活动",
+        "higher_anchor": "能想象到的最严重疼痛"
+      }
+    ],
+    "current_score": 8,
+    "current_severity": "severe",
+    "current_score_confirmed": true,
+    "current_vas_trace": [
+      {
+        "low": 0,
+        "high": 10,
+        "midpoint": 5,
+        "choice": "higher",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "能想象到的最严重疼痛"
+      },
+      {
+        "low": 6,
+        "high": 10,
+        "midpoint": 8,
+        "choice": "lower",
+        "lower_anchor": "较明显的疼痛，正常活动会比较困难",
+        "higher_anchor": "能想象到的最严重疼痛"
+      },
+      {
+        "low": 6,
+        "high": 8,
+        "midpoint": 7,
+        "choice": "higher",
+        "lower_anchor": "较明显的疼痛，正常活动会比较困难",
+        "higher_anchor": "很重的疼痛，活动或休息都很困难"
+      }
+    ],
+    "location": "膝盖",
+    "functional_impact": "睡觉",
+    "usual_comparison": "same",
+    "patient_words": [
+      "24h average pain (binary_anchor_calibrated): 9; final answer: 以下",
+      "current pain (binary_anchor_calibrated): 8; final answer: 后",
+      "膝盖",
+      "睡觉",
+      "差不多"
+    ]
+  },
+  "safety_assessment": {
+    "side_effect_screening_result": "no",
+    "reported_symptoms": [
+      "没没没"
+    ],
+    "symptom_start_time": null,
+    "symptom_status": "unknown",
+    "symptom_severity": "unknown",
+    "medication_or_treatment_context": "不懂",
+    "medication_reduced_paused_or_stopped": "unknown",
+    "doctor_contacted": "unknown",
+    "emergency_visit_or_hospitalization": "unknown",
+    "non_urgent_concerns": [],
+    "researcher_alert_required": false,
+    "red_flag_status": "no",
+    "red_flag_present": false,
+    "red_flag_uncertain": false,
+    "red_flag_symptoms": [],
+    "action_advised": "未提示紧急升级"
+  },
+  "doctor_summary": "王大明完成了一次居家骨关节炎疼痛随访，报告9/10（过去24小时平均），8/10（当前），部位为膝盖。功能影响：睡觉。与平时相比：和平时差不多。本次随访未报告紧急危险信号。",
+  "suggested_follow_up_priority": "高优先级：疼痛较重或活动明显受限",
+  "limitations": [
+    "Research prototype; not approved for clinical use.",
+    "Voice self-report only.",
+    "No physical exam performed.",
+    "No diagnosis or medication adjustment made."
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "您好，这里是北京大学研究团队，想做一个简短的关节疼痛随访。开始前，请您先说一下姓名、手机号和年龄。"
+    },
+    {
+      "role": "user",
+      "text": "王大明 01234567890 50"
+    },
+    {
+      "role": "assistant",
+      "text": "为了记录准确，我想确认一下：现在是您本人自己回答，家属在旁边帮忙，还是由家属代您回答？"
+    },
+    {
+      "role": "user",
+      "text": "自己"
+    },
+    {
+      "role": "assistant",
+      "text": "回想过去一天，您的关节疼痛平均大概是0到10分里的几分？ 为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 5分以下：没有关节疼痛，还是 6分以上：能想象到的最严重疼痛？"
+    },
+    {
+      "role": "user",
+      "text": "以上"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 8分以下：较明显的疼痛，正常活动会比较困难，还是 9分以上：能想象到的最严重疼痛？"
+    },
+    {
+      "role": "user",
+      "text": "以上"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 9分以下：极重疼痛，几乎难以进行正常活动，还是 10分以上：能想象到的最严重疼痛？"
+    },
+    {
+      "role": "user",
+      "text": "以下"
+    },
+    {
+      "role": "assistant",
+      "text": "我会记录为9分，接近：极重疼痛，几乎难以进行正常活动。"
+    },
+    {
+      "role": "assistant",
+      "text": "那现在这一刻，您会给这个疼痛打几分？0到10分。 为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 5分以下：没有关节疼痛，还是 6分以上：能想象到的最严重疼痛？"
+    },
+    {
+      "role": "user",
+      "text": "以上"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 8分以下：较明显的疼痛，正常活动会比较困难，还是 9分以上：能想象到的最严重疼痛？"
+    },
+    {
+      "role": "user",
+      "text": "以下"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 7分以下：较明显的疼痛，正常活动会比较困难，还是 8分以上：很重的疼痛，活动或休息都很困难？"
+    },
+    {
+      "role": "user",
+      "text": "8分"
+    },
+    {
+      "role": "assistant",
+      "text": "为了记录0到10分，请告诉我更接近前一个较轻的描述，还是后一个较重的描述。"
+    },
+    {
+      "role": "user",
+      "text": "后"
+    },
+    {
+      "role": "assistant",
+      "text": "我会记录为8分，接近：很重的疼痛，活动或休息都很困难。"
+    },
+    {
+      "role": "assistant",
+      "text": "今天主要是哪个部位疼？"
+    },
+    {
+      "role": "user",
+      "text": "脚"
+    },
+    {
+      "role": "assistant",
+      "text": "哪里疼？比如膝盖、髋部、手，或者腰背。"
+    },
+    {
+      "role": "user",
+      "text": "膝"
+    },
+    {
+      "role": "assistant",
+      "text": "哪里疼？比如膝盖、髋部、手，或者腰背。"
+    },
+    {
+      "role": "user",
+      "text": "膝盖"
+    },
+    {
+      "role": "assistant",
+      "text": "今天影响您做什么事？比如走路、上下楼、睡觉，或者用手。"
+    },
+    {
+      "role": "user",
+      "text": "睡觉"
+    },
+    {
+      "role": "assistant",
+      "text": "和您平时相比，这次是轻一些、重一些，还是差不多？"
+    },
+    {
+      "role": "user",
+      "text": "chabuduo"
+    },
+    {
+      "role": "assistant",
+      "text": "和您平时相比，是轻了、重了，还是差不多？"
+    },
+    {
+      "role": "user",
+      "text": "差不多"
+    },
+    {
+      "role": "assistant",
+      "text": "您现在有没有用什么止痛办法？比如药片、药膏、针剂，或者康复治疗。"
+    },
+    {
+      "role": "user",
+      "text": "不懂"
+    },
+    {
+      "role": "assistant",
+      "text": "最近有没有不舒服或新的症状？比如胃不舒服、肿胀、皮疹、头晕，或者喘不上气。"
+    },
+    {
+      "role": "user",
+      "text": "没"
+    },
+    {
+      "role": "assistant",
+      "text": "最后确认几个安全问题。有没有胸痛、喘不上气、黑便、吐血、晕倒、意识混乱，或者关节又红又热还发烧？"
+    },
+    {
+      "role": "user",
+      "text": "还活着呢"
+    },
+    {
+      "role": "assistant",
+      "text": "不好意思，安全症状这里是有，还是没有？"
+    },
+    {
+      "role": "user",
+      "text": "没没没"
+    }
+  ]
+}

@@ -99,6 +99,7 @@ class ConversationState:
     pain: PainAssessment = field(default_factory=PainAssessment)
     safety: SafetyAssessment = field(default_factory=SafetyAssessment)
     transcript: list[dict[str, str]] = field(default_factory=list)
+    model_events: list[dict[str, object]] = field(default_factory=list)
     report: str | None = None
     complete: bool = False
     escalation_message_spoken: bool = False
@@ -160,6 +161,7 @@ class ConversationState:
                 "action_advised": self.safety.action_advised,
             },
             "transcript": self.transcript,
+            "model_events": self.model_events,
             "report": self.report,
             "pending_clarification": self.pending_clarification,
         }

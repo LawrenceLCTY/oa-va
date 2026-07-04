@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 import os
+import sys
 import tempfile
 import wave
 from pathlib import Path
@@ -17,6 +19,10 @@ KOKORO_LOCAL_DIR = "/home/lawrencelcty/huggingface/models/hexgrad/Kokoro-82M-v1.
 KOKORO_SAMPLE_RATE = 24000
 KOKORO_ZH_VOICE = "zf_001"
 KOKORO_EN_VOICE = "af_maple"
+COSYVOICE_MODEL_DIR = "/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+COSYVOICE_REPO_DIR = "/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/CosyVoice"
+COSYVOICE_PROMPT_WAV = "/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/CosyVoice/asset/zero_shot_prompt.wav"
+COSYVOICE_PROMPT_TEXT = "You are a helpful assistant.<|endofprompt|>希望你以后能够做的比我还好呦。"
 QWEN_TTS_MODEL_DIR = "/home/lawrencelcty/huggingface/models/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 QWEN_TTS_ZH_SPEAKER = "Vivian"
 QWEN_TTS_EN_SPEAKER = "Ryan"
@@ -33,16 +39,35 @@ class LocalTTS:
         self.cache_dir = DEFAULT_TTS_CACHE_DIR
         self._pipelines: dict[str, Any] = {}
         self._qwen_model: Any | None = None
+        self._cosyvoice_model: Any | None = None
+        self._cosyvoice_sample_rate: int | None = None
+        self.last_trace: dict[str, object] | None = None
         self.openai = OpenAIClient()
         self.prefer_local = _env_enabled("PREFER_SERVER_TTS")
 
     def status(self) -> dict[str, object]:
         qwen_path = _qwen_model_dir()
+        cosy_path = _cosyvoice_model_dir()
+        cosy_prompt = _cosyvoice_prompt_wav()
         return {
-            "enabled": self.prefer_local or _qwen_enabled(self.openai.enabled),
+            "enabled": self.prefer_local or _cosyvoice_enabled() or _qwen_enabled(self.openai.enabled),
             "prefer_local": self.prefer_local,
-            "engine": "openai+qwen3tts",
+            "engine": "cosyvoice3+openai+qwen3tts",
             "openai": self.openai.status(),
+            "cosyvoice3": {
+                "enabled": _cosyvoice_enabled(),
+                "model_dir": str(cosy_path),
+                "model_dir_found": cosy_path.exists(),
+                "repo_dir": str(_cosyvoice_repo_dir()),
+                "repo_dir_found": _cosyvoice_repo_dir().exists(),
+                "prompt_wav": str(cosy_prompt),
+                "prompt_wav_found": cosy_prompt.exists(),
+                "mode": _cosyvoice_mode(),
+                "fp16": _cosyvoice_fp16_enabled(),
+                "load_jit": _cosyvoice_jit_enabled(),
+                "load_trt": _cosyvoice_trt_enabled(),
+                "loaded": self._cosyvoice_model is not None,
+            },
             "qwen3tts": {
                 "enabled": _qwen_enabled(self.openai.enabled),
                 "auto_enabled": _qwen_auto_enabled(self.openai.enabled),
@@ -62,48 +87,139 @@ class LocalTTS:
             "zh_voice": KOKORO_ZH_VOICE,
             "en_voice": KOKORO_EN_VOICE,
             "loaded_languages": sorted(self._pipelines),
+            "last_trace": self.last_trace,
         }
 
     @property
     def enabled(self) -> bool:
-        return self.prefer_local or _qwen_enabled(self.openai.enabled)
+        return self.prefer_local or _cosyvoice_enabled() or _qwen_enabled(self.openai.enabled)
 
     def synthesize(self, text: str, language: str) -> tuple[bytes | None, str, str | None]:
         if not self.enabled:
+            self.last_trace = {"engine": "none", "success": False, "error": "server TTS is disabled"}
             return None, "audio/mpeg", "server TTS is disabled"
         cleaned = _clean_text(text)
         if not cleaned:
+            self.last_trace = {"engine": "none", "success": False, "error": "empty tts text"}
             return None, "audio/wav", "empty tts text"
 
-        audio, content_type, err = self.openai.synthesize_speech(cleaned, language)
+        err = None
+        if _cosyvoice_enabled():
+            cache_path = self._cache_path(cleaned, _cosyvoice_language(language), _cosyvoice_mode(), "cosyvoice3")
+            if cache_path.exists():
+                self.last_trace = {"engine": "cosyvoice3", "success": True, "cached": True}
+                return cache_path.read_bytes(), "audio/wav", None
+            try:
+                audio = self._synthesize_cosyvoice(cleaned, language)
+                self._write_cache(cache_path, audio)
+                self.last_trace = {"engine": "cosyvoice3", "success": True, "cached": False}
+                return audio, "audio/wav", None
+            except Exception as exc:
+                err = f"CosyVoice3 {type(exc).__name__}: {exc}"
+                self.last_trace = {"engine": "cosyvoice3", "success": False, "error": err}
+
+        audio, content_type, openai_err = self.openai.synthesize_speech(cleaned, language)
         if audio:
+            self.last_trace = {"engine": "openai_tts", "success": True}
             return audio, content_type, None
+        err = err or openai_err
         if _qwen_enabled(self.openai.enabled):
             content_type = "audio/wav"
             cache_path = self._cache_path(cleaned, _qwen_language(language), _qwen_speaker(language), "qwen3tts")
             if cache_path.exists():
+                self.last_trace = {"engine": "qwen3tts", "success": True, "cached": True}
                 return cache_path.read_bytes(), "audio/wav", None
             try:
                 audio = self._synthesize_qwen(cleaned, language)
                 self._write_cache(cache_path, audio)
+                self.last_trace = {"engine": "qwen3tts", "success": True, "cached": False}
                 return audio, "audio/wav", None
             except Exception as exc:
                 err = f"{type(exc).__name__}: {exc}"
+                self.last_trace = {"engine": "qwen3tts", "success": False, "error": err}
         if not _kokoro_fallback_enabled():
+            if not self.last_trace or self.last_trace.get("success") is not False:
+                self.last_trace = {"engine": "none", "success": False, "error": err}
             return None, content_type, err
 
         lang_code = _kokoro_lang_code(language)
         voice = _kokoro_voice(language)
         cache_path = self._cache_path(cleaned, lang_code, voice)
         if cache_path.exists():
+            self.last_trace = {"engine": "kokoro", "success": True, "cached": True}
             return cache_path.read_bytes(), "audio/wav", None
 
         try:
             audio = self._synthesize_kokoro(cleaned, lang_code, voice)
             self._write_cache(cache_path, audio)
+            self.last_trace = {"engine": "kokoro", "success": True, "cached": False}
             return audio, "audio/wav", None
         except Exception as exc:
+            self.last_trace = {"engine": "kokoro", "success": False, "error": f"{type(exc).__name__}: {exc}"}
             return None, "audio/wav", f"{type(exc).__name__}: {exc}"
+
+    def _synthesize_cosyvoice(self, text: str, language: str) -> bytes:
+        model = self._cosyvoice_pipeline()
+        chunks = []
+        mode = _cosyvoice_mode()
+        prompt_wav = str(_cosyvoice_prompt_wav())
+        if mode == "instruct2":
+            generator = model.inference_instruct2(
+                text,
+                _cosyvoice_instruction(language),
+                prompt_wav,
+                stream=_cosyvoice_stream_enabled(),
+            )
+        else:
+            generator = model.inference_zero_shot(
+                text,
+                _cosyvoice_prompt_text(),
+                prompt_wav,
+                stream=_cosyvoice_stream_enabled(),
+            )
+        for item in generator:
+            if isinstance(item, dict) and "tts_speech" in item:
+                chunks.append(item["tts_speech"])
+        sample_rate = int(self._cosyvoice_sample_rate or getattr(model, "sample_rate", 24000))
+        return _chunks_to_wav_at_rate(chunks, sample_rate)
+
+    def _cosyvoice_pipeline(self) -> Any:
+        if self._cosyvoice_model is not None:
+            return self._cosyvoice_model
+        model_dir = _cosyvoice_model_dir()
+        if not model_dir.exists():
+            raise FileNotFoundError(f"CosyVoice3 model path not found: {model_dir}")
+        prompt_wav = _cosyvoice_prompt_wav()
+        if not prompt_wav.exists():
+            raise FileNotFoundError(f"CosyVoice3 prompt wav not found: {prompt_wav}")
+        repo_dir = _cosyvoice_repo_dir()
+        if repo_dir.exists():
+            sys.path.insert(0, str(repo_dir))
+            matcha_dir = repo_dir / "third_party" / "Matcha-TTS"
+            if matcha_dir.exists():
+                sys.path.insert(0, str(matcha_dir))
+        try:
+            from cosyvoice.cli.cosyvoice import AutoModel
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "CosyVoice is not importable. Install the FunAudioLLM/CosyVoice runtime in this environment "
+                "or set COSYVOICE_REPO_DIR to the cloned CosyVoice repo."
+            ) from exc
+        kwargs = _accepted_kwargs(
+            AutoModel,
+            {
+                "model_dir": str(model_dir),
+                "load_jit": _cosyvoice_jit_enabled(),
+                "load_trt": _cosyvoice_trt_enabled(),
+                "fp16": _cosyvoice_fp16_enabled(),
+            },
+        )
+        if "model_dir" in kwargs:
+            self._cosyvoice_model = AutoModel(**kwargs)
+        else:
+            self._cosyvoice_model = AutoModel(str(model_dir))
+        self._cosyvoice_sample_rate = int(getattr(self._cosyvoice_model, "sample_rate", 24000))
+        return self._cosyvoice_model
 
     def _synthesize_kokoro(self, text: str, lang_code: str, voice: str) -> bytes:
         pipeline = self._pipeline(lang_code)
@@ -186,6 +302,68 @@ def _kokoro_fallback_enabled() -> bool:
     return _env_enabled("ENABLE_KOKORO_TTS_FALLBACK")
 
 
+def _cosyvoice_enabled() -> bool:
+    override = os.getenv("ENABLE_COSYVOICE_TTS", "").strip().lower()
+    if override in {"0", "false", "no", "off"}:
+        return False
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    return _cosyvoice_model_dir().exists()
+
+
+def _cosyvoice_model_dir() -> Path:
+    return Path(os.getenv("COSYVOICE_MODEL_DIR", COSYVOICE_MODEL_DIR))
+
+
+def _cosyvoice_repo_dir() -> Path:
+    return Path(os.getenv("COSYVOICE_REPO_DIR", COSYVOICE_REPO_DIR))
+
+
+def _cosyvoice_prompt_wav() -> Path:
+    return Path(os.getenv("COSYVOICE_PROMPT_WAV", COSYVOICE_PROMPT_WAV))
+
+
+def _cosyvoice_prompt_text() -> str:
+    return os.getenv("COSYVOICE_PROMPT_TEXT", COSYVOICE_PROMPT_TEXT)
+
+
+def _cosyvoice_mode() -> str:
+    mode = os.getenv("COSYVOICE_MODE", "instruct2").strip().lower()
+    return mode if mode in {"instruct2", "zero_shot"} else "instruct2"
+
+
+def _cosyvoice_stream_enabled() -> bool:
+    return _env_enabled("COSYVOICE_STREAM")
+
+
+def _cosyvoice_fp16_enabled() -> bool:
+    return _env_enabled("COSYVOICE_FP16", default=True)
+
+
+def _cosyvoice_jit_enabled() -> bool:
+    return _env_enabled("COSYVOICE_LOAD_JIT")
+
+
+def _cosyvoice_trt_enabled() -> bool:
+    return _env_enabled("COSYVOICE_LOAD_TRT")
+
+
+def _cosyvoice_language(language: str) -> str:
+    return "zh" if language == "zh-CN" else "en"
+
+
+def _cosyvoice_instruction(language: str) -> str:
+    if language == "zh-CN":
+        return os.getenv(
+            "COSYVOICE_ZH_INSTRUCTION",
+            "用温和、清晰、自然的普通话电话随访语气说话，语速稍慢，像研究助理，不要夸张表演。",
+        )
+    return os.getenv(
+        "COSYVOICE_EN_INSTRUCTION",
+        "Speak in a warm, clear, natural phone check-in voice, slightly slow and professional.",
+    )
+
+
 def _qwen_enabled(openai_enabled: bool) -> bool:
     override = os.getenv("ENABLE_QWEN_TTS", "").strip().lower()
     if override in {"0", "false", "no", "off"}:
@@ -242,8 +420,21 @@ def _qwen_instruct(language: str) -> str:
     )
 
 
-def _env_enabled(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+def _env_enabled(name: str, *, default: bool = False) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
+def _accepted_kwargs(callable_obj: Any, values: dict[str, object]) -> dict[str, object]:
+    try:
+        parameters = inspect.signature(callable_obj).parameters
+    except (TypeError, ValueError):
+        return values
+    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()):
+        return values
+    return {key: value for key, value in values.items() if key in parameters}
 
 
 def _kokoro_lang_code(language: str) -> str:
@@ -263,6 +454,21 @@ def _chunks_to_wav(chunks: list[Any]) -> bytes:
     arrays = [np.asarray(chunk, dtype=np.float32).reshape(-1) for chunk in chunks]
     audio = np.concatenate(arrays)
     return _float_audio_to_wav(audio, KOKORO_SAMPLE_RATE)
+
+
+def _chunks_to_wav_at_rate(chunks: list[Any], sample_rate: int) -> bytes:
+    import numpy as np
+
+    if not chunks:
+        return _silent_wav(sample_rate)
+
+    arrays = []
+    for chunk in chunks:
+        if hasattr(chunk, "detach"):
+            chunk = chunk.detach().cpu().numpy()
+        arrays.append(np.asarray(chunk, dtype=np.float32).reshape(-1))
+    audio = np.concatenate(arrays)
+    return _float_audio_to_wav(audio, sample_rate)
 
 
 def _array_to_wav(audio: Any, sample_rate: int) -> bytes:

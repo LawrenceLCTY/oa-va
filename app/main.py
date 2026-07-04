@@ -255,6 +255,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
                         "mode": "private_explainable_pipeline",
                         "errors": result.errors,
                         "timings": result.timings,
+                        "model_event": state.model_events[-1] if state.model_events else None,
                     },
                 }
             )

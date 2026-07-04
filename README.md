@@ -69,6 +69,18 @@ export LOCAL_LLM_MODEL="/home/lawrencelcty/huggingface/models/Qwen/Qwen3-0.6B-FP
 export ENABLE_LOCAL_REPLY_REWRITE=0
 ```
 
+Server CosyVoice3 settings:
+
+```bash
+export ENABLE_COSYVOICE_TTS=1
+export COSYVOICE_MODEL_DIR="/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+export COSYVOICE_REPO_DIR="/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/CosyVoice"
+export COSYVOICE_PROMPT_WAV="/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/CosyVoice/asset/zero_shot_prompt.wav"
+export COSYVOICE_MODE="instruct2"
+```
+
+If the default prompt wav is not present on the server, set `COSYVOICE_PROMPT_WAV` to a short consented bot-voice reference wav.
+
 See `docs/v0.7-private-pipeline.md` for model contracts, streaming roadmap, and Covo/GLM research notes.
 
 ## v0.6 Covo Half-Duplex Experiment

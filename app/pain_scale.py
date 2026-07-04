@@ -82,7 +82,7 @@ def comparison_from_text(text: str) -> str:
         return "better"
     if any(term in cleaned for term in ("好些", "好多", "减轻", "轻了", "缓解", "改善")):
         return "better"
-    if any(term in cleaned for term in ("same", "similar", "usual", "unchanged", "no change")):
+    if any(term in cleaned for term in ("same", "similar", "usual", "unchanged", "no change", "chabuduo", "cha bu duo")):
         return "same"
     if any(term in cleaned for term in ("差不多", "一样", "差不多一样", "没变化", "没有变化", "和平时一样")):
         return "same"

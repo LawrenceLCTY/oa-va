@@ -118,6 +118,8 @@ def run_local_ai_rule_fallback() -> None:
     assert result is not None
     assert "chest pain" in (result.red_flags or [])
     assert "trouble breathing" in (result.red_flags or [])
+    assert ai.trace_events
+    assert ai.trace_events[-1]["fallback"] == "rule_only_after_model_failure"
 
 
 def run_private_pipeline_browser_transcript_fallback() -> None:
@@ -137,6 +139,40 @@ def run_private_pipeline_browser_transcript_fallback() -> None:
     assert state.step == "respondent_source"
     assert "stt_ms" in result.timings
     assert "clinical_engine_ms" in result.timings
+    assert state.model_events
+    assert state.model_events[-1]["transcript_source"] == "browser_transcript"
+
+
+def run_identity_phone_age_split() -> None:
+    engine = ConversationEngine()
+    state = engine.start(language="zh-CN")
+    engine.handle_user_message(state, "王大明 01234567890 50")
+
+    assert state.identity.name == "王大明"
+    assert state.identity.mobile_number == "01234567890"
+    assert state.identity.age == 50
+
+
+def run_pinyin_comparison_and_unclear_treatment() -> None:
+    engine = ConversationEngine()
+    state = engine.start(language="zh-CN")
+    for message in (
+        "王大明 01234567890 50",
+        "自己",
+        "5",
+        "5",
+        "膝盖",
+        "睡觉",
+        "chabuduo",
+    ):
+        engine.handle_user_message(state, message)
+
+    assert state.pain.usual_comparison == "same"
+    assert state.step == "treatment_context"
+
+    engine.handle_user_message(state, "不懂")
+    assert state.step == "treatment_context"
+    assert state.safety.medication_context is None
 
 
 def run_natural_start_check_in() -> None:
@@ -489,6 +525,8 @@ def run_side_effect_detail_check_in() -> None:
 if __name__ == "__main__":
     run_local_ai_rule_fallback()
     run_private_pipeline_browser_transcript_fallback()
+    run_identity_phone_age_split()
+    run_pinyin_comparison_and_unclear_treatment()
     run_natural_start_check_in()
     run_llm_slot_filling_check_in()
     run_llm_guided_clarification()

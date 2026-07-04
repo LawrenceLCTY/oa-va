@@ -140,7 +140,7 @@ def report_payload(state: ConversationState) -> dict[str, object]:
     return {
         "report_type": "oa_home_pain_check_in",
         "schema_version": "1.0",
-        "assistant_version": "v0.3",
+        "assistant_version": "v0.7",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "session": {
             "session_id": state.session_id,
@@ -202,5 +202,6 @@ def report_payload(state: ConversationState) -> dict[str, object]:
             "No physical exam performed.",
             "No diagnosis or medication adjustment made.",
         ],
+        "model_events": state.model_events,
         "transcript": state.transcript,
     }

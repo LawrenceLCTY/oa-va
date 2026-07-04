@@ -780,11 +780,9 @@ class ConversationEngine:
             if 1 <= age <= 120:
                 state.identity.age = age
 
-        phone_match = re.search(r"(?:\+?\d(?:[\d().-]|\s(?!\d{1,3}\s*岁)){6,}\d)", cleaned)
-        if phone_match:
-            digits = re.sub(r"\D", "", phone_match.group(0))
-            if 7 <= len(digits) <= 15:
-                state.identity.mobile_number = digits
+        phone_digits = _extract_phone_digits(cleaned)
+        if phone_digits:
+            state.identity.mobile_number = phone_digits
 
         name = self._extract_name(cleaned)
         if name:
@@ -975,6 +973,38 @@ def _title_name(text: str) -> str:
     if any("\u4e00" <= char <= "\u9fff" for char in cleaned):
         return cleaned
     return " ".join(part.capitalize() for part in cleaned.split())
+
+
+def _extract_phone_digits(text: str) -> str | None:
+    labeled = re.search(
+        r"(?:手机号|手机|电话|号码|phone|mobile|handphone|hp)\D{0,8}(\+?\d[\d\s().-]{5,}\d)",
+        text,
+        re.I,
+    )
+    if labeled:
+        digits = _best_phone_from_groups(re.findall(r"\d+", labeled.group(1)))
+        if digits:
+            return digits
+    return _best_phone_from_groups(re.findall(r"\d+", text))
+
+
+def _best_phone_from_groups(groups: list[str]) -> str | None:
+    contiguous = [group for group in groups if 7 <= len(group) <= 15]
+    if contiguous:
+        return max(contiguous, key=len)
+
+    best = None
+    for start in range(len(groups)):
+        digits = ""
+        for group in groups[start:]:
+            if len(group) <= 3 and group.isdigit() and 1 <= int(group) <= 120 and 7 <= len(digits) <= 15:
+                break
+            digits += group
+            if 7 <= len(digits) <= 15:
+                best = digits
+            if len(digits) > 15:
+                break
+    return best
 
 
 def _join_missing(items: list[str], language: str) -> str:

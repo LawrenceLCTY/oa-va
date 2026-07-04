@@ -1,0 +1,154 @@
+{
+  "report_type": "oa_home_pain_check_in",
+  "schema_version": "1.0",
+  "assistant_version": "v0.3",
+  "generated_at": "2026-06-24T12:54:22",
+  "session": {
+    "session_id": "85e190ac-06e8-4fe9-a364-fc6c8a55ce4c",
+    "created_at": "2026-06-24T12:52:16",
+    "language": "zh-CN",
+    "complete": true,
+    "conversation_type": "Home monitoring OA pain check-in"
+  },
+  "patient_identity": {
+    "name": "王大明",
+    "mobile_number": "012345678950",
+    "age": 50,
+    "status": "complete"
+  },
+  "readiness": {
+    "hearing_clear": "assumed",
+    "suitable_time": "assumed",
+    "permission_to_continue": "assumed",
+    "respondent_source": "unknown"
+  },
+  "pain_assessment": {
+    "scale": "0-10 Numeric Rating Scale with functional anchoring",
+    "average_24h_score": 8,
+    "average_24h_severity": "severe",
+    "average_24h_score_confirmed": true,
+    "current_score": 8,
+    "current_severity": "severe",
+    "current_score_confirmed": true,
+    "location": "全身疼",
+    "functional_impact": "上下楼疼",
+    "usual_comparison": "same",
+    "patient_words": [
+      "24h average pain: 8",
+      "current pain: 8",
+      "全身疼",
+      "上下楼疼",
+      "差不多吧"
+    ]
+  },
+  "safety_assessment": {
+    "side_effect_screening_result": "no",
+    "reported_symptoms": [
+      "没有没有"
+    ],
+    "symptom_start_time": null,
+    "symptom_status": "unknown",
+    "symptom_severity": "unknown",
+    "medication_or_treatment_context": "拜佛算吗",
+    "medication_reduced_paused_or_stopped": "unknown",
+    "doctor_contacted": "unknown",
+    "emergency_visit_or_hospitalization": "unknown",
+    "non_urgent_concerns": [],
+    "researcher_alert_required": false,
+    "red_flag_status": "no",
+    "red_flag_present": false,
+    "red_flag_uncertain": false,
+    "red_flag_symptoms": [],
+    "action_advised": "未提示紧急升级"
+  },
+  "doctor_summary": "王大明完成了一次居家骨关节炎疼痛随访，报告8/10（过去24小时平均），8/10（当前），部位为全身疼。功能影响：上下楼疼。与平时相比：和平时差不多。本次随访未报告紧急危险信号。",
+  "suggested_follow_up_priority": "高优先级：疼痛较重或活动明显受限",
+  "limitations": [
+    "Research prototype; not approved for clinical use.",
+    "Voice self-report only.",
+    "No physical exam performed.",
+    "No diagnosis or medication adjustment made."
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "您好，这里做一个简短的关节疼痛随访。先请您说一下姓名、手机号和年龄。"
+    },
+    {
+      "role": "user",
+      "text": "王大明 0123456789 50"
+    },
+    {
+      "role": "assistant",
+      "text": "现在是您本人回答，还是有家属帮忙，或者由家属代答？"
+    },
+    {
+      "role": "user",
+      "text": "儿子在旁边听着"
+    },
+    {
+      "role": "assistant",
+      "text": "请回想过去24小时，平均关节疼痛是0到10分的几分？"
+    },
+    {
+      "role": "user",
+      "text": "8"
+    },
+    {
+      "role": "assistant",
+      "text": "那现在这一刻，关节疼痛是0到10分的几分？"
+    },
+    {
+      "role": "user",
+      "text": "8"
+    },
+    {
+      "role": "assistant",
+      "text": "今天主要哪里疼？"
+    },
+    {
+      "role": "user",
+      "text": "全身疼"
+    },
+    {
+      "role": "assistant",
+      "text": "今天影响您做什么事？比如走路、上下楼、睡觉，或者用手。"
+    },
+    {
+      "role": "user",
+      "text": "上下楼疼"
+    },
+    {
+      "role": "assistant",
+      "text": "和您平时相比，是轻了、重了，还是差不多？"
+    },
+    {
+      "role": "user",
+      "text": "差不多吧"
+    },
+    {
+      "role": "assistant",
+      "text": "现在有用什么止痛办法吗？比如药片、药膏、针剂，或者康复治疗。"
+    },
+    {
+      "role": "user",
+      "text": "拜佛算吗"
+    },
+    {
+      "role": "assistant",
+      "text": "有没有不舒服或新的症状？比如胃不舒服、肿胀、皮疹、头晕，或者喘不上气。"
+    },
+    {
+      "role": "user",
+      "text": "没有"
+    },
+    {
+      "role": "assistant",
+      "text": "最后确认安全问题。有没有胸痛、喘不上气、黑便、吐血、晕倒、意识混乱，或者关节又红又热还发烧？"
+    },
+    {
+      "role": "user",
+      "text": "没有没有"
+    }
+  ]
+}

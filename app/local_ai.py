@@ -29,6 +29,8 @@ class LocalClinicalAI:
         self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "8"))
         self.understanding_enabled = _env_enabled("ENABLE_LOCAL_UNDERSTANDING", default=True)
         self.reply_rewrite_enabled = _env_enabled("ENABLE_LOCAL_REPLY_REWRITE", default=False)
+        self.last_trace: dict[str, object] | None = None
+        self.trace_events: list[dict[str, object]] = []
 
     @property
     def enabled(self) -> bool:
@@ -45,7 +47,19 @@ class LocalClinicalAI:
         }
 
     def understand(self, step: str, language: str, patient_text: str) -> UnderstandingResult | None:
+        self.last_trace = {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": self.enabled and self.understanding_enabled,
+            "model": self.model,
+            "url": self.url,
+            "step": step,
+            "language": language,
+            "used_model": False,
+        }
         if not self.enabled or not self.understanding_enabled:
+            self.last_trace["fallback"] = "rule_only"
+            self._record_trace(self.last_trace)
             return _rule_only_understanding(patient_text)
 
         payload = {
@@ -109,7 +123,23 @@ class LocalClinicalAI:
         body = self._post_json(payload)
         parsed = _parse_model_json(body)
         if not parsed:
+            self.last_trace["fallback"] = "rule_only_after_model_failure"
+            self._record_trace(self.last_trace)
             return _rule_only_understanding(patient_text)
+        self.last_trace.update(
+            {
+                "used_model": True,
+                "accepted": bool(parsed.get("accepted")),
+                "confidence": float(parsed.get("confidence") or 0),
+                "answer_type": str(parsed.get("answer_type") or "unknown"),
+                "slots_present": _present_slot_names(parsed.get("slots")),
+                "red_flags": parsed.get("red_flags") if isinstance(parsed.get("red_flags"), list) else [],
+                "non_urgent_concerns": (
+                    parsed.get("non_urgent_concerns") if isinstance(parsed.get("non_urgent_concerns"), list) else []
+                ),
+            }
+        )
+        self._record_trace(self.last_trace)
         return _understanding_from_parsed(parsed, patient_text)
 
     def friendly_reply(
@@ -145,7 +175,19 @@ class LocalClinicalAI:
             "max_tokens": 160,
         }
         body = self._post_json(payload)
-        return _choice_text(body)
+        text = _choice_text(body)
+        self.last_trace = {
+            "component": "local_clinical_ai",
+            "operation": "friendly_reply",
+            "enabled": True,
+            "model": self.model,
+            "url": self.url,
+            "language": language,
+            "used_model": bool(text),
+            "fallback": None if text else "required_line",
+        }
+        self._record_trace(self.last_trace)
+        return text
 
     def clarification_reply(
         self,
@@ -186,7 +228,26 @@ class LocalClinicalAI:
             "max_tokens": 180,
         }
         body = self._post_json(payload)
-        return _choice_text(body)
+        text = _choice_text(body)
+        self.last_trace = {
+            "component": "local_clinical_ai",
+            "operation": "clarification_reply",
+            "enabled": True,
+            "model": self.model,
+            "url": self.url,
+            "language": language,
+            "step": step,
+            "reason": reason,
+            "used_model": bool(text),
+            "fallback": None if text else "required_clarification",
+        }
+        self._record_trace(self.last_trace)
+        return text
+
+    def _record_trace(self, trace: dict[str, object]) -> None:
+        self.trace_events.append(dict(trace))
+        if len(self.trace_events) > 200:
+            self.trace_events = self.trace_events[-200:]
 
     def _post_json(self, payload: dict[str, object]) -> dict[str, Any] | None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -283,6 +344,19 @@ def _merge_unique(*values: object) -> list[str]:
                 if text and text not in merged:
                     merged.append(text)
     return merged
+
+
+def _present_slot_names(slots: object) -> list[str]:
+    if not isinstance(slots, dict):
+        return []
+    present = []
+    for key, value in slots.items():
+        if value is None:
+            continue
+        if isinstance(value, str) and value.strip() in {"", "unknown"}:
+            continue
+        present.append(str(key))
+    return sorted(present)
 
 
 def _env_enabled(name: str, *, default: bool = False) -> bool:

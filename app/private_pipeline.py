@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.conversation import ConversationEngine
+from app.report import generate_report
 from app.schemas import ConversationState
 from app.stt import LocalSTT
 from app.tts import LocalTTS
@@ -127,8 +128,21 @@ class PrivateVoicePipeline:
             )
 
         before = len(state.transcript)
+        trace_start = _ai_trace_count(self.engine)
         self.engine.handle_user_message(state, transcript)
         timing.mark("clinical_engine")
+        event = {
+            "component": "private_voice_pipeline",
+            "transcript_source": transcript_source,
+            "filename": filename,
+            "language": language,
+            "timings": timing.to_dict(),
+            "errors": errors,
+            "ai_traces": _new_ai_traces(self.engine, trace_start),
+        }
+        state.model_events.append(event)
+        if state.complete and state.report:
+            state.report = generate_report(state)
         assistant_messages = [
             item["text"]
             for item in state.transcript[before:]
@@ -143,3 +157,18 @@ class PrivateVoicePipeline:
             timings=timing.to_dict(),
             errors=errors,
         )
+
+
+def _ai_trace_count(engine: ConversationEngine) -> int:
+    ai = getattr(engine, "ai", None)
+    traces = getattr(ai, "trace_events", None)
+    return len(traces) if isinstance(traces, list) else 0
+
+
+def _new_ai_traces(engine: ConversationEngine, start: int) -> list[dict[str, object]]:
+    ai = getattr(engine, "ai", None)
+    traces = getattr(ai, "trace_events", None)
+    if not isinstance(traces, list):
+        trace = getattr(ai, "last_trace", None)
+        return [trace] if isinstance(trace, dict) else []
+    return [trace for trace in traces[start:] if isinstance(trace, dict)]

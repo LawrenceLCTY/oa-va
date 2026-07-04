@@ -1,0 +1,197 @@
+{
+  "report_type": "oa_home_pain_check_in",
+  "schema_version": "1.0",
+  "assistant_version": "v0.2.1",
+  "generated_at": "2026-06-18T17:26:16",
+  "session": {
+    "session_id": "f7c7209e-68ba-474c-a643-a1486c9420c0",
+    "created_at": "2026-06-18T17:21:03",
+    "language": "en",
+    "complete": true,
+    "conversation_type": "Home monitoring OA pain check-in"
+  },
+  "patient_identity": {
+    "name": "John Doe",
+    "mobile_number": "0123456789 50",
+    "age": 50,
+    "status": "complete"
+  },
+  "readiness": {
+    "hearing_clear": "yes",
+    "suitable_time": "yes",
+    "permission_to_continue": "yes",
+    "respondent_source": "unknown"
+  },
+  "pain_assessment": {
+    "scale": "0-10 Numeric Rating Scale with functional anchoring",
+    "average_24h_score": 5,
+    "average_24h_severity": "moderate",
+    "average_24h_score_confirmed": true,
+    "current_score": 9,
+    "current_severity": "severe",
+    "current_score_confirmed": true,
+    "location": "knee",
+    "functional_impact": "still pain",
+    "usual_comparison": "same",
+    "patient_words": [
+      "24h average pain: he said 5 i thought it was a 9",
+      "current pain: 9",
+      "knee",
+      "still pain",
+      "same pain same"
+    ]
+  },
+  "safety_assessment": {
+    "side_effect_screening_result": "no",
+    "reported_symptoms": [],
+    "symptom_start_time": null,
+    "symptom_status": "unknown",
+    "symptom_severity": "unknown",
+    "medication_or_treatment_context": "none reported",
+    "medication_reduced_paused_or_stopped": "unknown",
+    "doctor_contacted": "unknown",
+    "emergency_visit_or_hospitalization": "unknown",
+    "non_urgent_concerns": [],
+    "researcher_alert_required": false,
+    "red_flag_status": "no",
+    "red_flag_present": false,
+    "red_flag_uncertain": false,
+    "red_flag_symptoms": [],
+    "action_advised": "no urgent escalation"
+  },
+  "doctor_summary": "John Doe completed a home osteoarthritis pain check-in with 5/10 average over 24h and 9/10 current in knee. Functional impact: still pain. Pain compared with usual baseline was reported as same. No urgent red flags were reported during this check-in.",
+  "suggested_follow_up_priority": "High priority: severe pain or major functional limitation reported",
+  "limitations": [
+    "Research prototype; not approved for clinical use.",
+    "Voice self-report only.",
+    "No physical exam performed.",
+    "No diagnosis or medication adjustment made."
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "Hello, I'm a researcher from Peking University Medical Hospital. This is a research prototype, not an emergency or treatment service. I'm calling for a short joint pain check-in."
+    },
+    {
+      "role": "assistant",
+      "text": "Can you hear me clearly?"
+    },
+    {
+      "role": "user",
+      "text": "yes"
+    },
+    {
+      "role": "assistant",
+      "text": "Is now a good time to continue?"
+    },
+    {
+      "role": "user",
+      "text": "yes"
+    },
+    {
+      "role": "assistant",
+      "text": "May I continue with the follow-up questions?"
+    },
+    {
+      "role": "user",
+      "text": "yes"
+    },
+    {
+      "role": "assistant",
+      "text": "May I confirm your name, mobile number, and age?"
+    },
+    {
+      "role": "user",
+      "text": "John Doe 0123456789 50"
+    },
+    {
+      "role": "assistant",
+      "text": "Is the participant answering alone, with caregiver help, or is a caregiver answering for them?"
+    },
+    {
+      "role": "user",
+      "text": "i hv a caregiver beside me"
+    },
+    {
+      "role": "assistant",
+      "text": "Thinking about the past 24 hours, what was the average joint pain from 0 to 10?"
+    },
+    {
+      "role": "user",
+      "text": "he said 5 i thought it was a 9"
+    },
+    {
+      "role": "assistant",
+      "text": "And what number is the joint pain right now, from 0 to 10?"
+    },
+    {
+      "role": "user",
+      "text": "9"
+    },
+    {
+      "role": "assistant",
+      "text": "Where is the pain today?"
+    },
+    {
+      "role": "user",
+      "text": "knee"
+    },
+    {
+      "role": "assistant",
+      "text": "Is the pain stopping your normal activities today, or still manageable?"
+    },
+    {
+      "role": "user",
+      "text": "still pain"
+    },
+    {
+      "role": "assistant",
+      "text": "Is that better, worse, or about the same as usual?"
+    },
+    {
+      "role": "user",
+      "text": "same pain same"
+    },
+    {
+      "role": "assistant",
+      "text": "Are you using anything for the pain now? Tablets, cream, injections, or therapy?"
+    },
+    {
+      "role": "user",
+      "text": "no"
+    },
+    {
+      "role": "assistant",
+      "text": "Any side effects or new symptoms? For example stomach trouble, swelling, rash, dizziness, or breathing problems."
+    },
+    {
+      "role": "user",
+      "text": "cannot sleep"
+    },
+    {
+      "role": "assistant",
+      "text": "Sorry, is that a symptom or side effect, or should I record no symptoms?"
+    },
+    {
+      "role": "user",
+      "text": "dont know"
+    },
+    {
+      "role": "assistant",
+      "text": "Sorry, is that a symptom or side effect, or should I record no symptoms?"
+    },
+    {
+      "role": "user",
+      "text": "no"
+    },
+    {
+      "role": "assistant",
+      "text": "Last safety check. Any chest pain, trouble breathing, black stools, vomiting blood, fainting, confusion, or fever with a hot swollen joint?"
+    },
+    {
+      "role": "user",
+      "text": "no"
+    }
+  ]
+}
+
