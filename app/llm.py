@@ -20,7 +20,7 @@ class LocalLLM:
     def __init__(self) -> None:
         self.url = os.getenv("LOCAL_LLM_URL", DEFAULT_LLM_URL).strip()
         self.model = os.getenv("LOCAL_LLM_MODEL", DEFAULT_MODEL_PATH)
-        self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "8"))
+        self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "20"))
         self.polish_enabled = _env_enabled("ENABLE_LLM_PROMPT_POLISH")
 
     @property

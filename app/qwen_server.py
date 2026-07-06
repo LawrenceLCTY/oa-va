@@ -43,7 +43,13 @@ class QwenModel:
             self._model.to("cpu")
         self._model.eval()
 
-    def chat(self, messages: list[dict[str, str]]) -> str:
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        max_new_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
         self.load()
         assert self._tokenizer is not None
         assert self._model is not None
@@ -64,12 +70,18 @@ class QwenModel:
                 add_generation_prompt=True,
             )
         inputs = self._tokenizer([prompt], return_tensors="pt").to(self._model.device)
+        request_max_tokens = max_new_tokens if max_new_tokens is not None else self.max_new_tokens
+        request_temperature = temperature if temperature is not None else self.temperature
+        generation_kwargs: dict[str, object] = {
+            "max_new_tokens": max(1, request_max_tokens),
+            "do_sample": request_temperature > 0,
+        }
+        if request_temperature > 0:
+            generation_kwargs["temperature"] = request_temperature
         with torch.inference_mode():
             generated = self._model.generate(
                 **inputs,
-                max_new_tokens=self.max_new_tokens,
-                temperature=self.temperature,
-                do_sample=self.temperature > 0,
+                **generation_kwargs,
             )
         new_tokens = generated[:, inputs.input_ids.shape[-1] :]
         return self._tokenizer.batch_decode(new_tokens, skip_special_tokens=True)[0].strip()
@@ -103,8 +115,10 @@ class QwenHandler(BaseHTTPRequestHandler):
             for item in raw_messages
             if isinstance(item, dict)
         ]
+        max_new_tokens = _request_int(data, "max_tokens", MODEL.max_new_tokens)
+        temperature = _request_float(data, "temperature", MODEL.temperature)
         try:
-            content = MODEL.chat(messages)
+            content = MODEL.chat(messages, max_new_tokens=max_new_tokens, temperature=temperature)
         except Exception as exc:
             self._send_json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
@@ -138,11 +152,28 @@ class QwenHandler(BaseHTTPRequestHandler):
 
     def _send_json(self, payload: dict[str, object], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
+
+def _request_int(data: dict[str, object], key: str, fallback: int) -> int:
+    try:
+        return max(1, int(data.get(key, fallback)))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _request_float(data: dict[str, object], key: str, fallback: float) -> float:
+    try:
+        return max(0.0, float(data.get(key, fallback)))
+    except (TypeError, ValueError):
+        return fallback
 
 
 def run(host: str = "127.0.0.1", port: int = 8001) -> None:

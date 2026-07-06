@@ -26,7 +26,7 @@ class LocalClinicalAI:
     def __init__(self) -> None:
         self.url = os.getenv("LOCAL_LLM_URL", DEFAULT_LOCAL_LLM_URL).strip()
         self.model = os.getenv("LOCAL_LLM_MODEL", DEFAULT_LOCAL_LLM_MODEL).strip()
-        self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "8"))
+        self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "20"))
         self.understanding_enabled = _env_enabled("ENABLE_LOCAL_UNDERSTANDING", default=True)
         self.reply_rewrite_enabled = _env_enabled("ENABLE_LOCAL_REPLY_REWRITE", default=False)
         self.last_trace: dict[str, object] | None = None

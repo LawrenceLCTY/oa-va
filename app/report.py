@@ -137,10 +137,10 @@ def generate_report_zh(state: ConversationState) -> str:
 
 def report_payload(state: ConversationState) -> dict[str, object]:
     red_flag_status = "yes" if state.safety.red_flag_present else "uncertain" if state.safety.red_flag_uncertain else "no"
-    return {
+    payload = {
         "report_type": "oa_home_pain_check_in",
-        "schema_version": "1.0",
-        "assistant_version": "v0.7",
+        "schema_version": "0.7.2",
+        "assistant_version": "v0.7.2",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "session": {
             "session_id": state.session_id,
@@ -202,6 +202,250 @@ def report_payload(state: ConversationState) -> dict[str, object]:
             "No physical exam performed.",
             "No diagnosis or medication adjustment made.",
         ],
+        "medical_research_review": medical_research_review(state),
+        "conversation_trace": conversation_trace(state),
+        "ai_iteration": ai_iteration_section(state),
+        "audit_metadata": audit_metadata(state),
         "model_events": state.model_events,
         "transcript": state.transcript,
     }
+    return payload
+
+
+def medical_research_review(state: ConversationState) -> dict[str, object]:
+    missing = missing_required_fields(state)
+    return {
+        "clinical_completeness": {
+            "identity_complete": state.identity.is_complete,
+            "pain_scores_complete": state.pain.average_24h_score is not None and state.pain.score is not None,
+            "pain_location_complete": bool(state.pain.location),
+            "functional_anchor_complete": bool(state.pain.functional_impact),
+            "usual_comparison_complete": state.pain.usual_comparison != "unknown",
+            "treatment_context_complete": state.safety.medication_context is not None,
+            "side_effect_screen_complete": state.safety.side_effect_screening_result != "unknown",
+            "red_flag_screen_complete": state.complete or state.safety.red_flag_present,
+        },
+        "clinical_concerns": {
+            "urgent_red_flag": state.safety.red_flag_present,
+            "high_pain": bool(state.pain.score is not None and state.pain.score >= 7),
+            "researcher_alert_required": state.safety.researcher_alert_required,
+            "uncertain_red_flag": state.safety.red_flag_uncertain,
+            "missing_or_suspect_fields": missing,
+        },
+        "research_quality": {
+            "usable_for_study": not missing and not state.safety.red_flag_uncertain,
+            "requires_callback": bool(
+                state.safety.red_flag_present
+                or state.safety.researcher_alert_required
+                or state.safety.red_flag_uncertain
+                or missing
+            ),
+            "review_status": "unreviewed",
+        },
+    }
+
+
+def conversation_trace(state: ConversationState) -> dict[str, object]:
+    metrics = quality_metrics(state)
+    return {
+        "turn_count": len(state.transcript),
+        "turns": [
+            {
+                "turn_index": index + 1,
+                "role": item.get("role", "unknown"),
+                "text": item.get("text", ""),
+            }
+            for index, item in enumerate(state.transcript)
+        ],
+        "model_events": state.model_events,
+        "quality_metrics": metrics,
+    }
+
+
+def ai_iteration_section(state: ConversationState) -> dict[str, object]:
+    tags = failure_tags(state)
+    return {
+        "review_status": "unreviewed",
+        "approved_for_training": False,
+        "failure_tags": tags,
+        "training_candidates": training_candidates(state, tags),
+        "privacy": {
+            "raw_audio_included": False,
+            "requires_human_review_before_training": True,
+            "contains_phi": True,
+        },
+    }
+
+
+def audit_metadata(state: ConversationState) -> dict[str, object]:
+    models = []
+    for event in state.model_events:
+        for trace in event.get("ai_traces", []) if isinstance(event, dict) else []:
+            if isinstance(trace, dict) and trace.get("model"):
+                models.append(str(trace.get("model")))
+    return {
+        "review_status": "unreviewed",
+        "raw_audio_retention": "not_stored_by_default",
+        "model_names_observed": sorted(set(models)),
+        "model_event_count": len(state.model_events),
+        "report_single_file_policy": True,
+    }
+
+
+def missing_required_fields(state: ConversationState) -> list[str]:
+    missing = []
+    if not state.identity.is_complete:
+        missing.append("identity")
+    if state.pain.average_24h_score is None:
+        missing.append("average_24h_score")
+    if state.pain.score is None:
+        missing.append("current_pain_score")
+    if not state.pain.location:
+        missing.append("pain_location")
+    if not state.pain.functional_impact:
+        missing.append("functional_impact")
+    if state.pain.usual_comparison == "unknown":
+        missing.append("usual_comparison")
+    if state.safety.medication_context is None:
+        missing.append("treatment_context")
+    if state.safety.side_effect_screening_result == "unknown":
+        missing.append("side_effect_screen")
+    if not state.complete and not state.safety.red_flag_present:
+        missing.append("completion_or_escalation")
+    return missing
+
+
+def quality_metrics(state: ConversationState) -> dict[str, object]:
+    clarification_count = sum(
+        1
+        for item in state.transcript
+        if item.get("role") == "assistant" and _looks_like_clarification(item.get("text", ""))
+    )
+    fallback_count = 0
+    extraction_count = 0
+    rewrite_count = 0
+    tts_failure_count = 0
+    latencies = []
+    for event in state.model_events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("transcript_source") == "browser_transcript":
+            fallback_count += 1
+        timings = event.get("timings")
+        if isinstance(timings, dict) and isinstance(timings.get("total_ms"), int):
+            latencies.append(timings["total_ms"])
+        for trace in event.get("ai_traces", []):
+            if not isinstance(trace, dict):
+                continue
+            if trace.get("operation") == "understand" and trace.get("used_model"):
+                extraction_count += 1
+            if trace.get("operation") in {"friendly_reply", "clarification_reply"} and trace.get("used_model"):
+                rewrite_count += 1
+        if "tts" in failure_tags_from_event(event):
+            tts_failure_count += 1
+    return {
+        "turn_count": len(state.transcript),
+        "clarification_count": clarification_count,
+        "fallback_transcript_count": fallback_count,
+        "model_extraction_count": extraction_count,
+        "model_rewrite_count": rewrite_count,
+        "tts_failure_count": tts_failure_count,
+        "avg_turn_latency_ms": int(sum(latencies) / len(latencies)) if latencies else None,
+        "missing_required_fields": missing_required_fields(state),
+    }
+
+
+def failure_tags(state: ConversationState) -> list[str]:
+    tags = set()
+    if missing_required_fields(state):
+        tags.add("missing_required_field")
+    if not state.model_events:
+        tags.add("model_not_used")
+    if state.safety.red_flag_uncertain:
+        tags.add("medical_review_required")
+    if state.safety.red_flag_present:
+        tags.add("medical_review_required")
+    for event in state.model_events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("transcript_source") == "browser_transcript":
+            tags.add("browser_transcript_fallback")
+        timings = event.get("timings")
+        if isinstance(timings, dict) and int(timings.get("total_ms") or 0) > 2500:
+            tags.add("latency_high")
+        errors = event.get("errors")
+        if isinstance(errors, list) and errors:
+            if any("stt" in str(error).lower() for error in errors):
+                tags.add("stt_misheard")
+        for trace in event.get("ai_traces", []):
+            if isinstance(trace, dict) and trace.get("operation") == "understand" and not trace.get("used_model"):
+                tags.add("model_not_used")
+            if isinstance(trace, dict) and trace.get("operation") in {"friendly_reply", "clarification_reply"} and not trace.get("used_model"):
+                tags.add("reply_too_static")
+    if quality_metrics(state)["clarification_count"] >= 3:
+        tags.add("rulebook_overclarified")
+        tags.add("patient_confused")
+    return sorted(tags)
+
+
+def failure_tags_from_event(event: dict[str, object]) -> list[str]:
+    tags = []
+    errors = event.get("errors")
+    if isinstance(errors, list) and any("tts" in str(error).lower() for error in errors):
+        tags.append("tts")
+    return tags
+
+
+def training_candidates(state: ConversationState, tags: list[str]) -> list[dict[str, object]]:
+    candidates: list[dict[str, object]] = []
+    if "rulebook_overclarified" in tags or "patient_confused" in tags:
+        candidates.append(
+            {
+                "type": "response_preference",
+                "requires_human_review": True,
+                "reason": "Conversation required repeated clarification or showed patient confusion.",
+                "context": state.transcript[-8:],
+                "preferred_behavior": (
+                    "Acknowledge the patient's confusion, ask the same clinical item in simpler words, "
+                    "and preserve required clinical meaning."
+                ),
+            }
+        )
+    if "browser_transcript_fallback" in tags or "stt_misheard" in tags:
+        candidates.append(
+            {
+                "type": "stt_review",
+                "requires_human_review": True,
+                "reason": "Audio understanding used fallback or reported STT errors.",
+                "context": state.transcript[-8:],
+                "preferred_behavior": "Review transcript accuracy and add corrected transcript to an approved eval set.",
+            }
+        )
+    if "model_not_used" in tags:
+        candidates.append(
+            {
+                "type": "system_configuration",
+                "requires_human_review": False,
+                "reason": "No usable model trace was observed.",
+                "preferred_behavior": "Verify local Qwen service, ENABLE_LOCAL_UNDERSTANDING, and model trace logging.",
+            }
+        )
+    return candidates
+
+
+def _looks_like_clarification(text: str) -> bool:
+    lowered = text.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "could you",
+            "please",
+            "sorry",
+            "just checking",
+            "请",
+            "不好意思",
+            "确认一下",
+            "您的意思",
+            "有没有",
+        )
+    )

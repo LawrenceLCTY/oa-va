@@ -276,6 +276,16 @@ def run_routine_check_in() -> None:
     assert report["pain_assessment"]["current_score"] == 5
     assert report["safety_assessment"]["red_flag_present"] is False
     assert report["suggested_follow_up_priority"].startswith(("Routine", "High priority"))
+    assert report["schema_version"] == "0.7.2"
+    assert "medical_research_review" in report
+    assert "conversation_trace" in report
+    assert "ai_iteration" in report
+    assert "audit_metadata" in report
+    assert report["medical_research_review"]["clinical_completeness"]["identity_complete"] is True
+    assert report["conversation_trace"]["turn_count"] == len(report["transcript"])
+    assert report["ai_iteration"]["approved_for_training"] is False
+    assert report["ai_iteration"]["privacy"]["raw_audio_included"] is False
+    assert report["audit_metadata"]["report_single_file_policy"] is True
 
 
 def run_red_flag_check_in() -> None:
