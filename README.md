@@ -35,6 +35,19 @@ Chinese mode uses an independent Chinese UI, Chinese call script, Chinese speech
 
 Final doctor reports are generated as formatted JSON with stable English keys for easier downstream machine processing.
 
+
+## v0.8 Visual Refresh
+
+v0.8 makes the browser UI stakeholder-demo ready while keeping the existing clinical and privacy architecture intact:
+
+- Voice-call surface with a large assistant presence and clearer listening/speaking/processing states.
+- v0.8.1 adds a per-turn recording timer, microphone activity meter, and clearer recording/processing cleanup.
+- Protocol progress rail for identity, pain, function, treatment, side effects, red flags, and report completion.
+- Formatted doctor-report preview with raw JSON available as an audit/export view.
+- v0.8.2 expands the report preview with priority, pain, safety, research-review, quality, audit, and copy controls.
+- v0.8.3 adds client-side stakeholder demo states for ready, listening, urgent, and completed-report views.
+- Older-adult friendly spacing, contrast, tap targets, and responsive layout.
+
 ## v0.7 Private Explainable Pipeline
 
 v0.7 is the production architecture target for private data:

@@ -3,17 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OA Home Pain Check-in Assistant</title>
+    <title>OA Home Pain Check-in Assistant v0.8</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <main class="app-shell">
-      <section class="workspace" aria-label="OA Home Pain Check-in Assistant">
-        <header class="topbar">
-          <div>
-            <p id="eyebrowText" class="eyebrow">本地原型</p>
-            <h1 id="appTitle">骨关节炎疼痛随访</h1>
-            <p id="disclaimerText" class="disclaimer">研究原型：尚未批准用于临床。</p>
+      <section class="assistant-workspace" aria-label="OA Home Pain Check-in Assistant">
+        <header class="app-header">
+          <div class="brand-block">
+            <img class="brand-logo" src="/static/assets/bjmu-logo.svg" alt="北京大学医学部" />
+            <div class="brand-copy">
+              <p id="eyebrowText" class="eyebrow">私有语音随访原型</p>
+              <h1 id="appTitle">骨关节炎疼痛随访</h1>
+              <p id="disclaimerText" class="disclaimer">研究原型：尚未批准用于临床。</p>
+            </div>
           </div>
           <div class="topbar-controls">
             <label class="language-control" for="languageSelect">
@@ -23,50 +26,86 @@
                 <option value="en">English</option>
               </select>
             </label>
-            <div class="session-status">
+            <div class="session-status" aria-live="polite">
               <span id="statusDot" class="status-dot idle"></span>
               <span id="statusText">准备就绪</span>
             </div>
           </div>
         </header>
 
-        <section class="conversation-panel" aria-label="Conversation">
+        <section class="call-panel" aria-label="Voice check-in">
           <div class="call-stage">
-            <div id="orb" class="voice-orb idle" aria-hidden="true">
-              <span></span>
+            <div class="assistant-presence" aria-hidden="true">
+              <div id="orb" class="voice-orb idle">
+                <span class="orb-core"></span>
+                <span class="wave wave-a"></span>
+                <span class="wave wave-b"></span>
+                <span class="wave wave-c"></span>
+              </div>
             </div>
-            <p id="callHint" class="call-hint">准备好后开始语音随访。</p>
+            <div class="call-copy">
+              <p id="callModeLabel" class="call-mode-label">Ready</p>
+              <p id="callHint" class="call-hint">准备好后开始语音随访。</p>
+              <div id="voiceMeter" class="voice-meter" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div class="turn-status" aria-live="polite">
+                <span id="turnStatusText">One answer per turn</span>
+                <span id="recordingTimer">00:00</span>
+              </div>
+            </div>
             <div class="call-actions">
               <button id="startButton" class="primary-button call-button" type="button">
-                开始随访
+                <span class="button-icon start-icon" aria-hidden="true"></span>
+                <span class="button-label">开始语音随访</span>
               </button>
               <button id="voiceButton" class="secondary-button" type="button" disabled>
-                结束
+                <span class="button-icon stop-icon" aria-hidden="true"></span>
+                <span class="button-label">结束</span>
               </button>
             </div>
           </div>
 
+
           <div id="transcript" class="transcript" aria-live="polite"></div>
 
           <form id="messageForm" class="composer">
+            <label class="sr-only" for="messageInput">回答</label>
             <input
               id="messageInput"
               type="text"
               autocomplete="off"
-              placeholder="可以直接说，也可以输入回答"
-              aria-label="回答"
+              placeholder="需要时可输入补充回答"
+              aria-label="补充回答"
               disabled
             />
-            <button id="sendButton" class="icon-button" type="submit" aria-label="发送回答" title="发送回答" disabled>
-              <span aria-hidden="true">发送</span>
+            <button id="sendButton" class="icon-button" type="submit" aria-label="发送补充回答" title="发送补充回答" disabled>
+              <span aria-hidden="true">Send</span>
             </button>
           </form>
         </section>
       </section>
 
-      <aside class="side-panel" aria-label="Check-in report and safety status">
-        <section class="summary-block">
-          <h2 id="stateTitle">随访状态</h2>
+      <aside class="handoff-panel" aria-label="Check-in report and safety status">
+        <section class="progress-block">
+          <div class="section-heading">
+            <p>Protocol</p>
+            <h2 id="stateTitle">随访状态</h2>
+          </div>
+          <ol class="progress-rail" aria-label="Check-in progress">
+            <li class="progress-item" data-step-key="identity"><span></span><strong>Identity</strong></li>
+            <li class="progress-item" data-step-key="pain"><span></span><strong>Pain</strong></li>
+            <li class="progress-item" data-step-key="function"><span></span><strong>Function</strong></li>
+            <li class="progress-item" data-step-key="treatment"><span></span><strong>Treatment</strong></li>
+            <li class="progress-item" data-step-key="side_effects"><span></span><strong>Side effects</strong></li>
+            <li class="progress-item" data-step-key="red_flags"><span></span><strong>Red flags</strong></li>
+            <li class="progress-item" data-step-key="complete"><span></span><strong>Report</strong></li>
+          </ol>
           <dl class="state-grid">
             <div>
               <dt id="stepLabel">步骤</dt>
@@ -89,10 +128,22 @@
 
         <section class="report-block">
           <div class="report-header">
-            <h2 id="reportTitle">医生报告</h2>
-            <button id="saveReportButton" class="secondary-button" type="button" disabled>保存</button>
+            <div class="section-heading">
+              <p>Handoff</p>
+              <h2 id="reportTitle">医生报告</h2>
+            </div>
+            <div class="report-actions">
+              <button id="copyReportButton" class="ghost-button" type="button" disabled>Copy</button>
+              <button id="reportToggleButton" class="ghost-button" type="button" disabled>JSON</button>
+              <button id="saveReportButton" class="secondary-button save-button" type="button" disabled>
+                <span class="button-icon save-icon" aria-hidden="true"></span>
+                <span class="button-label">保存</span>
+              </button>
+            </div>
           </div>
-          <pre id="reportOutput" class="report-output">随访完成后，这里会显示报告。</pre>
+          <div id="reportSummaryBand" class="report-summary-band" hidden></div>
+          <div id="reportVisual" class="report-visual empty">随访完成后，这里会显示报告。</div>
+          <pre id="reportOutput" class="report-output" hidden>随访完成后，这里会显示报告。</pre>
         </section>
       </aside>
     </main>

@@ -25,7 +25,17 @@ const identityLabel = document.querySelector("#identityLabel");
 const reportTitle = document.querySelector("#reportTitle");
 const callHint = document.querySelector("#callHint");
 const orb = document.querySelector("#orb");
-const conversationPanel = document.querySelector(".conversation-panel");
+const conversationPanel = document.querySelector(".call-panel");
+const callModeLabel = document.querySelector("#callModeLabel");
+const reportVisual = document.querySelector("#reportVisual");
+const reportToggleButton = document.querySelector("#reportToggleButton");
+const copyReportButton = document.querySelector("#copyReportButton");
+const reportSummaryBand = document.querySelector("#reportSummaryBand");
+const progressItems = Array.from(document.querySelectorAll(".progress-item"));
+const voiceMeter = document.querySelector("#voiceMeter");
+const meterBars = Array.from(document.querySelectorAll("#voiceMeter span"));
+const turnStatusText = document.querySelector("#turnStatusText");
+const recordingTimer = document.querySelector("#recordingTimer");
 
 const REALTIME_URL = "https://api.openai.com/v1/realtime";
 
@@ -52,6 +62,12 @@ let recognition = null;
 let recognizing = false;
 let selectedVoice = null;
 let fallbackAudio = null;
+let audioContext = null;
+let audioAnalyser = null;
+let audioMeterFrame = null;
+let audioMeterData = null;
+let recordingStartedAt = null;
+let recordingTimerId = null;
 
 const UI = {
   "zh-CN": {
@@ -84,12 +100,20 @@ const UI = {
     privateStarted: "已进入 v0.7 私有可解释语音流水线。请按“开始回答”，说完后按“结束回答”。",
     privateUnavailable: "私有语音流水线暂不可用，正在使用基础本地随访。",
     privateRecordHint: "按“开始回答”后说一句完整回答；系统会用本地语音识别和规则引擎处理。",
+    turnIdle: "每次回答一句完整内容",
+    turnRecording: "正在录音，请自然说话",
+    turnProcessing: "正在整理你的回答",
     browserFallbackStarted: "本地语音合成不可用，已切换到基础随访模式。",
     micUnavailable: "无法打开麦克风。请检查浏览器权限。",
     inputPlaceholder: "需要时可输入补充回答",
     inputAria: "补充回答",
     send: "发送",
     sendAria: "发送补充回答",
+    json: "JSON",
+    preview: "预览",
+    copy: "复制",
+    copied: "报告已复制。",
+    copyFailed: "无法复制报告。",
     stateTitle: "随访状态",
     step: "步骤",
     pain: "疼痛",
@@ -162,12 +186,20 @@ const UI = {
     privateStarted: "v0.7 private explainable voice pipeline is active. Press Start Answer, speak one complete answer, then stop.",
     privateUnavailable: "Private voice pipeline is unavailable, so I switched to the basic local check-in.",
     privateRecordHint: "Press Start Answer, speak one complete answer, then stop. Local STT and the rule engine will process it.",
+    turnIdle: "One complete answer per turn",
+    turnRecording: "Recording now. Speak naturally",
+    turnProcessing: "Processing your answer",
     browserFallbackStarted: "Local speech synthesis is unavailable, so I switched to the base check-in mode.",
     micUnavailable: "Could not open the microphone. Check browser permissions.",
     inputPlaceholder: "Type a backup answer if needed",
     inputAria: "Backup answer",
     send: "Send",
     sendAria: "Send backup answer",
+    json: "JSON",
+    preview: "Preview",
+    copy: "Copy",
+    copied: "Report copied.",
+    copyFailed: "Could not copy report.",
     stateTitle: "Check-in State",
     step: "Step",
     pain: "Pain",
@@ -205,6 +237,9 @@ if (SpeechRecognition) {
   recognition.addEventListener("end", () => {
     recognizing = false;
     if (fallbackMode && !lastState?.complete) {
+      stopVoiceMeter();
+      resetTurnStatus();
+      setButtonLabel(voiceButton, ui().speak);
       setCallMode("ready");
     }
   });
@@ -275,6 +310,54 @@ saveReportButton.addEventListener("click", async () => {
   addMessage("system", payload.saved ? `${ui().savedPrefix}${payload.path}` : payload.error || ui().saveFailed);
 });
 
+reportToggleButton?.addEventListener("click", () => {
+  if (!lastState?.report) {
+    return;
+  }
+  const showingJson = reportOutput.hidden;
+  reportOutput.hidden = !showingJson;
+  reportVisual.hidden = showingJson;
+  if (reportSummaryBand) {
+    reportSummaryBand.hidden = showingJson;
+  }
+  reportToggleButton.classList.toggle("active", showingJson);
+  reportToggleButton.textContent = showingJson ? ui().preview : ui().json;
+});
+
+copyReportButton?.addEventListener("click", async () => {
+  if (!lastState?.report) {
+    return;
+  }
+  try {
+    await copyText(lastState.report);
+    copyReportButton.textContent = ui().copied;
+    setTimeout(() => {
+      copyReportButton.textContent = ui().copy;
+    }, 1400);
+  } catch (error) {
+    copyReportButton.textContent = ui().copyFailed;
+    setTimeout(() => {
+      copyReportButton.textContent = ui().copy;
+    }, 1800);
+  }
+});
+
+function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand("copy");
+  textarea.remove();
+  return ok ? Promise.resolve() : Promise.reject(new Error("copy failed"));
+}
+
 async function startRealtimeCall() {
   if (callActive) {
     endRealtimeCall();
@@ -298,7 +381,7 @@ async function startRealtimeCall() {
     callActive = true;
     voiceButton.disabled = false;
     languageSelect.disabled = true;
-    startButton.textContent = ui().restart;
+    setButtonLabel(startButton, ui().restart);
     setCallMode("listening");
   } catch (error) {
     console.error(error);
@@ -328,9 +411,9 @@ async function startBaseFallback(reason) {
   updateState(payload.state);
   enableBackupInput(true);
   voiceButton.disabled = !recognition;
-  voiceButton.textContent = recognition ? ui().speak : ui().end;
+  setButtonLabel(voiceButton, recognition ? ui().speak : ui().end);
   languageSelect.disabled = true;
-  startButton.textContent = ui().restart;
+  setButtonLabel(startButton, ui().restart);
   addMessage("system", ui().fallbackStarted);
   for (const message of payload.assistant_messages || []) {
     addMessage("assistant", message);
@@ -363,14 +446,16 @@ async function startPrivateCall() {
     updateState(payload.state);
     enableBackupInput(true);
     voiceButton.disabled = false;
-    voiceButton.textContent = ui().recordTurn;
+    setButtonLabel(voiceButton, ui().recordTurn);
     languageSelect.disabled = true;
-    startButton.textContent = ui().restart;
+    setButtonLabel(startButton, ui().restart);
     addMessage("system", ui().privateStarted);
     for (const message of payload.assistant_messages || []) {
       addMessage("assistant", message);
     }
     await speakFallbackQueue(payload.assistant_messages || []);
+    stopVoiceMeter();
+    resetTurnStatus();
     setCallMode(lastState?.complete ? "complete" : "ready");
   } catch (error) {
     console.error(error);
@@ -710,13 +795,18 @@ function toggleFallbackMic() {
   }
   if (recognizing) {
     recognition.stop();
-    voiceButton.textContent = ui().speak;
+    stopVoiceMeter();
+    resetTurnStatus();
+    setButtonLabel(voiceButton, ui().speak);
     return;
   }
   try {
     recognition.lang = currentLanguage;
     recognition.start();
-    voiceButton.textContent = ui().stopMic;
+    startVoiceMeter(localStream);
+    startRecordingTimer();
+    setTurnStatus(ui().turnRecording);
+    setButtonLabel(voiceButton, ui().stopMic);
   } catch (error) {
     setCallMode("ready");
   }
@@ -728,7 +818,9 @@ async function togglePrivateTurnRecording() {
   }
   if (privateRecorder && privateRecorder.state === "recording") {
     privateRecorder.stop();
-    voiceButton.textContent = ui().recordTurn;
+    stopVoiceMeter({ keepTimer: true });
+    setTurnStatus(ui().turnProcessing);
+    setButtonLabel(voiceButton, ui().recordTurn);
     if (recognition && recognizing) {
       recognition.stop();
     }
@@ -757,12 +849,126 @@ async function togglePrivateTurnRecording() {
     privateRecorder.addEventListener("stop", submitPrivateRecordedTurn);
     privateRecorder.start();
     startPrivateSpeechRecognition();
-    voiceButton.textContent = ui().stopTurn;
+    startVoiceMeter(localStream);
+    startRecordingTimer();
+    setTurnStatus(ui().turnRecording);
+    setButtonLabel(voiceButton, ui().stopTurn);
     setCallMode("listening");
   } catch (error) {
     addMessage("system", ui().micUnavailable);
     setCallMode("error");
   }
+}
+
+function startVoiceMeter(stream) {
+  if (!voiceMeter || !meterBars.length) {
+    return;
+  }
+  stopVoiceMeter({ keepTimer: true });
+  if (!stream) {
+    voiceMeter.classList.add("active");
+    conversationPanel.classList.add("recording");
+    meterBars.forEach((bar, index) => bar.style.setProperty("--level", `${10 + (index % 3) * 8}px`));
+    return;
+  }
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) {
+      voiceMeter.classList.add("active");
+      conversationPanel.classList.add("recording");
+      return;
+    }
+    audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+    audioAnalyser = audioContext.createAnalyser();
+    audioAnalyser.fftSize = 128;
+    audioAnalyser.smoothingTimeConstant = 0.72;
+    audioMeterData = new Uint8Array(audioAnalyser.frequencyBinCount);
+    source.connect(audioAnalyser);
+    voiceMeter.classList.add("active");
+    conversationPanel.classList.add("recording");
+    updateVoiceMeter();
+  } catch (error) {
+    voiceMeter.classList.add("active");
+    conversationPanel.classList.add("recording");
+  }
+}
+
+function updateVoiceMeter() {
+  if (!audioAnalyser || !audioMeterData) {
+    return;
+  }
+  audioAnalyser.getByteFrequencyData(audioMeterData);
+  const groupSize = Math.max(1, Math.floor(audioMeterData.length / meterBars.length));
+  meterBars.forEach((bar, index) => {
+    const start = index * groupSize;
+    const slice = audioMeterData.slice(start, start + groupSize);
+    const average = slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
+    const height = 8 + Math.min(30, Math.round((average / 255) * 34));
+    bar.style.setProperty("--level", `${height}px`);
+  });
+  audioMeterFrame = requestAnimationFrame(updateVoiceMeter);
+}
+
+function stopVoiceMeter(options = {}) {
+  const keepTimer = Boolean(options.keepTimer);
+  if (audioMeterFrame) {
+    cancelAnimationFrame(audioMeterFrame);
+    audioMeterFrame = null;
+  }
+  if (audioContext) {
+    audioContext.close().catch(() => {});
+  }
+  audioContext = null;
+  audioAnalyser = null;
+  audioMeterData = null;
+  voiceMeter?.classList.remove("active");
+  conversationPanel?.classList.remove("recording");
+  meterBars.forEach((bar) => bar.style.setProperty("--level", "8px"));
+  if (!keepTimer) {
+    stopRecordingTimer();
+  }
+}
+
+function startRecordingTimer() {
+  recordingStartedAt = Date.now();
+  updateRecordingTimer();
+  if (recordingTimerId) {
+    clearInterval(recordingTimerId);
+  }
+  recordingTimerId = setInterval(updateRecordingTimer, 250);
+}
+
+function stopRecordingTimer() {
+  if (recordingTimerId) {
+    clearInterval(recordingTimerId);
+    recordingTimerId = null;
+  }
+  recordingStartedAt = null;
+  if (recordingTimer) {
+    recordingTimer.textContent = "00:00";
+  }
+}
+
+function updateRecordingTimer() {
+  if (!recordingTimer || !recordingStartedAt) {
+    return;
+  }
+  const elapsedSeconds = Math.floor((Date.now() - recordingStartedAt) / 1000);
+  const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(2, "0");
+  const seconds = String(elapsedSeconds % 60).padStart(2, "0");
+  recordingTimer.textContent = `${minutes}:${seconds}`;
+}
+
+function setTurnStatus(text) {
+  if (turnStatusText) {
+    turnStatusText.textContent = text;
+  }
+}
+
+function resetTurnStatus() {
+  setTurnStatus(ui().turnIdle);
+  stopRecordingTimer();
 }
 
 function preferredRecordingMimeType() {
@@ -788,13 +994,19 @@ async function submitPrivateRecordedTurn() {
   if (discardPrivateRecording) {
     discardPrivateRecording = false;
     privateAudioChunks = [];
+    stopVoiceMeter();
+    resetTurnStatus();
     setCallMode(sessionId ? "ready" : "ended");
     return;
   }
   if (!sessionId || !privateMode || !privateAudioChunks.length) {
+    stopVoiceMeter();
+    resetTurnStatus();
     setCallMode("ready");
     return;
   }
+  stopVoiceMeter({ keepTimer: true });
+  setTurnStatus(ui().turnProcessing);
   setCallMode("processing");
   const mimeType = privateRecorder?.mimeType || preferredRecordingMimeType() || "audio/webm";
   const blob = new Blob(privateAudioChunks, { type: mimeType });
@@ -825,9 +1037,13 @@ async function submitPrivateRecordedTurn() {
       addMessage("assistant", message);
     }
     await speakFallbackQueue(payload.assistant_messages || []);
+    stopVoiceMeter();
+    resetTurnStatus();
     setCallMode(lastState?.complete ? "complete" : "ready");
   } catch (error) {
     addMessage("system", error.message || ui().privateUnavailable);
+    stopVoiceMeter();
+    resetTurnStatus();
     setCallMode("error");
   }
 }
@@ -876,6 +1092,8 @@ function endRealtimeCall(options = {}) {
   if (recognition && recognizing) {
     recognition.stop();
   }
+  stopVoiceMeter();
+  resetTurnStatus();
   pendingFunctionCalls.clear();
   handledFunctionCalls.clear();
   fallbackMode = false;
@@ -910,7 +1128,7 @@ function endRealtimeCall(options = {}) {
     remoteAudio = null;
   }
   voiceButton.disabled = true;
-  voiceButton.textContent = ui().end;
+  setButtonLabel(voiceButton, ui().end);
   languageSelect.disabled = false;
   enableBackupInput(Boolean(sessionId && !lastState?.complete));
   if (!keepTranscript && sessionId && !lastState?.complete) {
@@ -934,10 +1152,25 @@ function resetConversationUi() {
   pendingUserText = "";
   pendingFunctionCalls.clear();
   handledFunctionCalls.clear();
+  stopVoiceMeter();
+  resetTurnStatus();
   privateAudioChunks = [];
   privateTranscriptDraft = "";
   reportOutput.textContent = ui().reportPending;
+  reportOutput.hidden = true;
+  reportVisual.hidden = false;
+  renderReportPreview(null);
+  updateProgressRail(null);
   saveReportButton.disabled = true;
+  if (reportToggleButton) {
+    reportToggleButton.disabled = true;
+    reportToggleButton.classList.remove("active");
+    reportToggleButton.textContent = ui().json;
+  }
+  if (copyReportButton) {
+    copyReportButton.disabled = true;
+    copyReportButton.textContent = ui().copy;
+  }
   stepValue.textContent = ui().notStarted;
   painValue.textContent = ui().notCaptured;
   redFlagValue.textContent = ui().notScreened;
@@ -974,12 +1207,34 @@ function updateState(state) {
       : ui().noUrgentFlags;
   identityValue.textContent = state.identity?.status || ui().notConfirmed;
 
+  updateProgressRail(state);
+
   if (state.report) {
     reportOutput.textContent = state.report;
+    renderReportPreview(state.report);
     saveReportButton.disabled = false;
+    if (reportToggleButton) {
+      reportToggleButton.disabled = false;
+    }
+    if (copyReportButton) {
+      copyReportButton.disabled = false;
+      copyReportButton.textContent = ui().copy;
+    }
   } else {
     reportOutput.textContent = ui().reportPending;
+    renderReportPreview(null);
     saveReportButton.disabled = true;
+    if (reportToggleButton) {
+      reportToggleButton.disabled = true;
+      reportToggleButton.classList.remove("active");
+      reportToggleButton.textContent = ui().json;
+      reportOutput.hidden = true;
+      reportVisual.hidden = false;
+    }
+    if (copyReportButton) {
+      copyReportButton.disabled = true;
+      copyReportButton.textContent = ui().copy;
+    }
   }
 
   if (state.safety?.red_flag_present) {
@@ -995,34 +1250,294 @@ function updateConversationLayout() {
   conversationPanel.classList.toggle("session-active", Boolean(sessionId));
 }
 
+function setButtonLabel(button, label) {
+  const labelEl = button?.querySelector(".button-label") || button?.querySelector("span:last-child");
+  if (labelEl) {
+    labelEl.textContent = label;
+  } else if (button) {
+    button.textContent = label;
+  }
+}
+
+function updateProgressRail(state) {
+  const activeKey = progressKeyForStep(state?.step);
+  const completed = completedProgressKeys(state);
+  progressItems.forEach((item) => {
+    const key = item.dataset.stepKey;
+    item.classList.toggle("complete", completed.has(key));
+    item.classList.toggle("current", key === activeKey && !state?.complete);
+    item.classList.toggle("urgent", key === "red_flags" && Boolean(state?.safety?.red_flag_present));
+  });
+}
+
+function progressKeyForStep(step) {
+  if (!step) return "identity";
+  if (["identity", "respondent_source", "readiness_hearing", "readiness_time", "permission"].includes(step)) return "identity";
+  if (["average_pain_score", "current_pain_score", "pain_location"].includes(step)) return "pain";
+  if (["functional_impact", "usual_comparison"].includes(step)) return "function";
+  if (["treatment_context"].includes(step)) return "treatment";
+  if (step.startsWith("side_effect") || ["medication_changed", "doctor_contacted", "emergency_visit"].includes(step)) return "side_effects";
+  if (step === "red_flags") return "red_flags";
+  if (step === "complete") return "complete";
+  return "identity";
+}
+
+function completedProgressKeys(state) {
+  const done = new Set();
+  if (!state) return done;
+  if (state.identity?.status && state.identity.status !== "missing") done.add("identity");
+  if (state.pain?.score !== null && state.pain?.score !== undefined) done.add("pain");
+  if (state.pain?.functional_impact || state.pain?.usual_comparison) done.add("function");
+  if (state.safety?.medication_context) done.add("treatment");
+  if (state.safety?.side_effect_screening_result && state.safety.side_effect_screening_result !== "unknown") done.add("side_effects");
+  if (state.safety?.red_flag_present || state.safety?.red_flag_uncertain || state.step === "complete" || state.complete) done.add("red_flags");
+  if (state.complete) done.add("complete");
+  return done;
+}
+
+function renderReportPreview(reportText) {
+  if (!reportVisual) return;
+  if (!reportText) {
+    reportSummaryBand.hidden = true;
+    reportSummaryBand.innerHTML = "";
+    reportVisual.className = "report-visual empty";
+    reportVisual.textContent = ui().reportPending;
+    return;
+  }
+  let report = null;
+  try {
+    report = JSON.parse(reportText);
+  } catch (error) {
+    reportSummaryBand.hidden = true;
+    reportSummaryBand.innerHTML = "";
+    reportVisual.className = "report-visual";
+    reportVisual.textContent = reportText;
+    return;
+  }
+
+  renderReportSummaryBand(report);
+  reportVisual.className = "report-visual";
+  reportVisual.innerHTML = "";
+
+  const priorityText = String(report.suggested_follow_up_priority || report.follow_up_priority || report.doctor_summary || ui().report);
+  const priority = document.createElement("div");
+  priority.className = `report-priority ${isUrgentText(priorityText) ? "urgent" : ""}`;
+  priority.append(createTextElement("span", "Follow-up priority"), document.createTextNode(priorityText));
+  reportVisual.appendChild(priority);
+
+  addChipRow([
+    chip("Identity", report.medical_research_review?.clinical_completeness?.identity_complete),
+    chip("Pain scores", report.medical_research_review?.clinical_completeness?.pain_scores_complete),
+    chip("Function", report.medical_research_review?.clinical_completeness?.functional_anchor_complete),
+    chip("Red flags", !(report.safety_assessment?.red_flag_present || report.safety_assessment?.red_flag_uncertain), report.safety_assessment?.red_flag_present ? "danger" : "warn"),
+    chip("Study usable", report.medical_research_review?.research_quality?.usable_for_study),
+  ]);
+
+  addReportSection("Doctor handoff", [
+    ["Summary", report.doctor_summary],
+    ["Action advised", report.safety_assessment?.action_advised],
+    ["Session", report.session?.conversation_type],
+    ["Language", report.session?.language],
+  ]);
+  addReportSection("Patient", [
+    ["Name", report.patient_identity?.name],
+    ["Mobile", report.patient_identity?.mobile_number || report.patient_identity?.phone],
+    ["Age", report.patient_identity?.age],
+    ["Identity status", report.patient_identity?.status],
+    ["Respondent", report.readiness?.respondent_source],
+  ]);
+  addReportSection("Pain assessment", [
+    ["24h average", scoreWithSeverity(report.pain_assessment?.average_24h_score, report.pain_assessment?.average_24h_severity)],
+    ["Current", scoreWithSeverity(report.pain_assessment?.current_score, report.pain_assessment?.current_severity)],
+    ["Location", report.pain_assessment?.location],
+    ["Functional impact", report.pain_assessment?.functional_impact],
+    ["Usual baseline", report.pain_assessment?.usual_comparison],
+    ["Patient words", report.pain_assessment?.patient_words],
+  ]);
+  addReportSection("Safety assessment", [
+    ["Treatment context", report.safety_assessment?.medication_or_treatment_context],
+    ["Side effects", report.safety_assessment?.side_effect_screening_result],
+    ["Symptoms", listValue(report.safety_assessment?.reported_symptoms)],
+    ["Symptom status", report.safety_assessment?.symptom_status],
+    ["Symptom severity", report.safety_assessment?.symptom_severity],
+    ["Medication changed", report.safety_assessment?.medication_reduced_paused_or_stopped],
+    ["Doctor contacted", report.safety_assessment?.doctor_contacted],
+    ["Emergency visit", report.safety_assessment?.emergency_visit_or_hospitalization],
+    ["Red flags", report.safety_assessment?.red_flag_status],
+    ["Red-flag symptoms", listValue(report.safety_assessment?.red_flag_symptoms)],
+  ]);
+  addReviewGrid("Research review", [
+    ["Usable for study", yesNo(report.medical_research_review?.research_quality?.usable_for_study)],
+    ["Requires callback", yesNo(report.medical_research_review?.research_quality?.requires_callback)],
+    ["Missing fields", listValue(report.medical_research_review?.clinical_concerns?.missing_or_suspect_fields) || "None"],
+    ["Review status", report.medical_research_review?.research_quality?.review_status],
+  ]);
+  addReviewGrid("Conversation quality", [
+    ["Turns", report.conversation_trace?.turn_count],
+    ["Model events", report.audit_metadata?.model_event_count],
+    ["Observed models", listValue(report.audit_metadata?.model_names_observed) || "None"],
+    ["Raw audio", report.audit_metadata?.raw_audio_retention],
+  ]);
+  addNoteList("Limitations", report.limitations);
+}
+
+function renderReportSummaryBand(report) {
+  if (!reportSummaryBand) return;
+  reportSummaryBand.hidden = false;
+  reportSummaryBand.innerHTML = "";
+  const priority = String(report.suggested_follow_up_priority || report.follow_up_priority || "Pending");
+  const pain = scoreWithSeverity(report.pain_assessment?.current_score, report.pain_assessment?.current_severity) || "Not captured";
+  const redFlags = report.safety_assessment?.red_flag_status || "unknown";
+  reportSummaryBand.append(
+    summaryPill("Priority", priority, isUrgentText(priority) ? "urgent" : ""),
+    summaryPill("Current pain", pain),
+    summaryPill("Red flags", redFlags, redFlags === "yes" ? "urgent" : ""),
+  );
+}
+
+function summaryPill(label, value, tone = "") {
+  const pill = document.createElement("div");
+  pill.className = `summary-pill ${tone}`.trim();
+  pill.append(createTextElement("span", label), createTextElement("strong", value || "-"));
+  return pill;
+}
+
+function addChipRow(chips) {
+  const row = document.createElement("div");
+  row.className = "report-chip-row";
+  chips.filter(Boolean).forEach((item) => row.appendChild(item));
+  reportVisual.appendChild(row);
+}
+
+function chip(label, value, falseTone = "warn") {
+  if (value === undefined || value === null) return null;
+  const item = document.createElement("span");
+  item.className = `report-chip ${value ? "good" : falseTone}`;
+  item.textContent = `${label}: ${value ? "OK" : "Check"}`;
+  return item;
+}
+
+function addReportSection(title, fields) {
+  const section = document.createElement("section");
+  section.className = "report-section";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  section.appendChild(heading);
+  const dl = document.createElement("dl");
+  for (const [label, value] of fields) {
+    if (isEmptyReportValue(value)) continue;
+    const row = document.createElement("div");
+    row.className = "report-field";
+    row.append(createTextElement("dt", label), createTextElement("dd", value));
+    dl.appendChild(row);
+  }
+  section.appendChild(dl);
+  reportVisual.appendChild(section);
+}
+
+function addReviewGrid(title, fields) {
+  const section = document.createElement("section");
+  section.className = "report-section";
+  section.appendChild(createTextElement("h3", title));
+  const grid = document.createElement("div");
+  grid.className = "review-grid";
+  fields.forEach(([label, value]) => {
+    if (isEmptyReportValue(value)) return;
+    const card = document.createElement("div");
+    card.className = "review-card";
+    card.append(createTextElement("span", label), createTextElement("strong", value));
+    grid.appendChild(card);
+  });
+  section.appendChild(grid);
+  reportVisual.appendChild(section);
+}
+
+function addNoteList(title, values) {
+  if (!Array.isArray(values) || !values.length) return;
+  const section = document.createElement("section");
+  section.className = "report-section";
+  section.appendChild(createTextElement("h3", title));
+  const list = document.createElement("ul");
+  list.className = "report-note-list";
+  values.forEach((value) => {
+    if (isEmptyReportValue(value)) return;
+    const item = document.createElement("li");
+    item.textContent = String(value);
+    list.appendChild(item);
+  });
+  section.appendChild(list);
+  reportVisual.appendChild(section);
+}
+
+function createTextElement(tag, text) {
+  const el = document.createElement(tag);
+  el.textContent = String(text ?? "");
+  return el;
+}
+
+function isEmptyReportValue(value) {
+  if (value === null || value === undefined || value === "") return true;
+  if (Array.isArray(value) && !value.filter(Boolean).length) return true;
+  return value === "none reported" || value === "未报告" || value === "unknown";
+}
+
+function listValue(value) {
+  return Array.isArray(value) ? value.filter(Boolean).join(", ") : value;
+}
+
+function scoreWithSeverity(score, severity) {
+  if (score === null || score === undefined) return "";
+  return severity ? `${score}/10 (${severity})` : `${score}/10`;
+}
+
+function yesNo(value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return value;
+}
+
+function isUrgentText(text) {
+  return /emergency|urgent|high priority|red flag|紧急|危险/i.test(String(text || ""));
+}
+
 function setCallMode(mode) {
   orb.className = `voice-orb ${mode}`;
+  conversationPanel.classList.toggle("listening", mode === "listening" || mode === "speaking");
   if (mode === "connecting") {
     callHint.textContent = ui().callConnecting;
+    callModeLabel.textContent = ui().connecting;
     setStatus(ui().connecting, "active");
   } else if (mode === "listening") {
     callHint.textContent = ui().callLive;
+    callModeLabel.textContent = ui().listening;
     setStatus(ui().listening, "active");
   } else if (mode === "speaking") {
     callHint.textContent = ui().callLive;
+    callModeLabel.textContent = ui().speaking;
     setStatus(ui().speaking, "active");
   } else if (mode === "processing") {
     callHint.textContent = ui().callLive;
+    callModeLabel.textContent = ui().processing;
     setStatus(ui().processing, "active");
   } else if (mode === "complete") {
     callHint.textContent = ui().complete;
+    callModeLabel.textContent = ui().complete;
     setStatus(ui().complete, "active");
   } else if (mode === "urgent") {
     callHint.textContent = ui().urgentFlag;
+    callModeLabel.textContent = ui().urgentFlag;
     setStatus(ui().urgentFlag, "danger");
   } else if (mode === "error") {
     callHint.textContent = ui().realtimeUnavailable;
+    callModeLabel.textContent = ui().error;
     setStatus(ui().error, "warning");
   } else if (mode === "ended") {
     callHint.textContent = ui().callEnded;
+    callModeLabel.textContent = ui().ready;
     setStatus(ui().ready, "idle");
   } else {
     callHint.textContent = privateMode ? ui().privateRecordHint : ui().callReady;
+    callModeLabel.textContent = ui().ready;
     setStatus(ui().ready, "idle");
   }
 }
@@ -1061,8 +1576,8 @@ function applyLanguage() {
   appTitle.textContent = text.title;
   disclaimerText.textContent = text.disclaimer;
   languageLabel.textContent = text.language;
-  startButton.textContent = sessionId ? text.restart : text.start;
-  voiceButton.textContent = privateMode ? text.recordTurn : fallbackMode ? text.speak : text.end;
+  setButtonLabel(startButton, sessionId ? text.restart : text.start);
+  setButtonLabel(voiceButton, privateMode ? text.recordTurn : fallbackMode ? text.speak : text.end);
   messageInput.placeholder = text.inputPlaceholder;
   messageInput.setAttribute("aria-label", text.inputAria);
   sendButton.querySelector("span").textContent = text.send;
@@ -1074,7 +1589,16 @@ function applyLanguage() {
   redFlagLabel.textContent = text.redFlags;
   identityLabel.textContent = text.identity;
   reportTitle.textContent = text.report;
-  saveReportButton.textContent = text.save;
+  if (!recordingStartedAt) {
+    resetTurnStatus();
+  }
+  setButtonLabel(saveReportButton, text.save);
+  if (reportToggleButton && !reportToggleButton.classList.contains("active")) {
+    reportToggleButton.textContent = text.json;
+  }
+  if (copyReportButton && !lastState?.report) {
+    copyReportButton.textContent = text.copy;
+  }
   if (!sessionId) {
     resetConversationUi();
     setCallMode("ready");

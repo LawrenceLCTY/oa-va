@@ -15,6 +15,11 @@ Use this folder to backtrack:
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| [v0.8.4](./v0.8.4.md) | 2026-07-09 | Adapts the v0.8 visual theme around PKU red with restrained clinical-support colors. |
+| [v0.8.3](./v0.8.3.md) | 2026-07-09 | Removes confusing demo/trust phrases and keeps the interface focused on the actual check-in workflow. |
+| [v0.8.2](./v0.8.2.md) | 2026-07-09 | Improves the doctor-report preview with summary metrics, clinical sections, review signals, and copy/export affordances. |
+| [v0.8.1](./v0.8.1.md) | 2026-07-09 | Adds voice interaction polish with recording timer, microphone activity meter, and clearer turn-state cleanup. |
+| [v0.8.0](./v0.8.0.md) | 2026-07-09 | Redesigns the frontend as a polished clinical voice-assistant interface with protocol progress and formatted report preview. |
 | [v0.5](./v0.5.md) | 2026-06-29 | Adds OpenAI Realtime plus Qwen3-TTS fallback, and records the pivot toward true full-duplex V2V after stakeholder UX review. |
 | [v0.4.2](./v0.4.2.md) | 2026-06-25 | Adds guided VAS/NRS pain-score calibration using binary comparisons against concrete OA pain scenarios. |
 | [v0.4.1](./v0.4.1.md) | 2026-06-25 | Refines bilingual spoken prompts with explicit clinical intent metadata while preserving deterministic validation and safety flow. |

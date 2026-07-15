@@ -5,3 +5,14 @@ sara_prd.txt
 # reports/
 __pycache__/
 *.py[cod]
+# Research reading / scoping-review workspaces
+configs/pubmed_oa_scoping_search.json
+docs/oa_voice_assistant_scoping_review.md
+outputs/scoping_review/
+scripts/chart_pmc_full_text.py
+scripts/fetch_pmc_fulltext.py
+scripts/finalize_scoping_review_eligibility.py
+scripts/prepare_full_text_review.py
+scripts/pubmed_pipeline.py
+scripts/screen_pubmed_title_abstract.py
+scripts/triage_pubmed_screening.py
