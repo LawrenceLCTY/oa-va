@@ -1,0 +1,19 @@
+{
+  "created_at_utc": "2026-07-21T02:40:48+00:00",
+  "context_appendix_record_count": 286,
+  "context_records_before_main_evidence_exclusion": 291,
+  "main_evidence_records_removed_from_context_appendix": 5,
+  "pubmed_context_count": 191,
+  "external_context_count": 100,
+  "main_evidence_source_row_count_audit_only": 12,
+  "main_evidence_unique_record_count_audit_only": 10,
+  "main_evidence_study_count": 9,
+  "duplicate_or_alias_records_removed_for_manuscript_count": 488,
+  "deduplicated_records_for_manuscript_count": 947,
+  "records_retained_for_context_relevance_review_count": 295,
+  "outputs": {
+    "context_appendix": "outputs/scoping_review/final_review_package/context_appendix_records.csv",
+    "main_references": "outputs/scoping_review/final_review_package/main_evidence_references.md",
+    "prisma_flow": "outputs/scoping_review/final_review_package/prisma_flow.md"
+  }
+}

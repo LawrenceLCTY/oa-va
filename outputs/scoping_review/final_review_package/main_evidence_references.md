@@ -1,0 +1,11 @@
+## Main Evidence References
+
+1. Strahl A, Graichen H, Haas H, Hube R, Perka C, Rolvien T, et al. Evaluation of the patient-accompanying app alley ortho companion for patients with osteoarthritis of the knee and hip: study protocol for a randomized controlled multi-center trial. Trials. 2022. doi:10.1186/s13063-022-06662-6.
+2. Gan W, Ouyang J, She G, Xue Z, Zhu L, Lin A, et al. ChatGPT’s role in alleviating anxiety in total knee arthroplasty consent process: a randomized controlled trial pilot study. International Journal of Surgery. 2025;111:2546-2557. doi:10.1097/JS9.0000000000002223.
+3. Blasco JM, Diaz-Diaz B, Perez-Maletzki J, Hernandez-Guillen D, Navarro-Bosch M, Aroca JE, et al. A natural language processing tool to promote adherence to home rehabilitation after major joint replacement surgeries in osteoarthritis. Osteoarthritis Cartilage. 2024. doi:10.1016/j.joca.2024.03.089.
+4. Using mobile application to help patients to do rehabilitation after total knee arthroplasty: a randomized control trial. Thai Clinical Trials Registry TCTR20240507004. 2024. https://trialsearch.who.int/Trial2.aspx?TrialID=TCTR20240507004.
+5. van der Weegen W, Timmers T, Jacobs M, Saris K, van de Groes SAW. Human interaction with a virtual assistant in preparation for in-hospital orthopedic consultation: a feasibility and acceptability study in older adults with osteoarthritis. PEC Innovation. 2026. doi:10.1016/j.pecinn.2025.100446.
+6. Farias H, Gonzalez Aroca J, Ortiz D. Chatbot based on large language model to improve adherence to exercise-based treatment in people with knee osteoarthritis: system development. Technologies. 2025. doi:10.3390/technologies13040140.
+7. CHAT-OA: Conversations in Health Literacy Using AI Technology for Osteoarthritis Patients. ClinicalTrials.gov NCT06778486. 2024. https://clinicaltrials.gov/study/NCT06778486.
+8. The Effect of ChatGPT-5, Gemini 2.5 Pro, and DeepSeek V3.1 Guided Rehabilitation on Clinical Outcomes in Individuals With Degenerative Knee Disease. ClinicalTrials.gov NCT07267962. 2025. https://clinicaltrials.gov/study/NCT07267962.
+9. Bilgin TT, Avci MF, Gunay SM, Sahin B, Sayaca C, Altan L, et al. DeepTherapy: a mobile platform for osteoarthritis rehabilitation utilizing chain-of-thought reasoning and deep learning. European Research Journal. 2025. doi:10.18621/eurj.1672422.
