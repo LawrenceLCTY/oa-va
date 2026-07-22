@@ -1,6 +1,8 @@
-# OA Home Pain Check-in Assistant
+# OA Medication Questionnaire Voice Assistant
 
-Local prototype for an osteoarthritis home pain monitoring voice assistant.
+Local prototype for an osteoarthritis medication and treatment questionnaire voice assistant.
+
+v0.9.0 uses the local DOCX questionnaire, sample voice recording, and transcript in `data/` as the active protocol guidance. The DOCX defines the required fields; the sample conversation defines the target phone-interview style.
 
 ## Run
 
@@ -14,17 +16,17 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The browser UI is voice-first. v0.7 makes the default runtime a private explainable voice pipeline:
+The browser UI is voice-first. The current v0.9.0 flow collects the structured OA questionnaire one question at a time:
 
 ```text
 browser recorded patient turn
   -> local STT through SenseVoiceSmall when available
   -> local Qwen-compatible structured extraction when available
-  -> deterministic OA clinical engine
+  -> deterministic DOCX-guided questionnaire engine
   -> local Qwen3-TTS or browser speech output
 ```
 
-The deterministic clinical engine still controls protocol flow, validation, red-flag escalation, and report generation. Model layers are adapters for transcription, structured extraction, wording, and speech. Browser transcript capture remains a development fallback when local STT is unavailable.
+The deterministic engine controls protocol flow, questionnaire validation, conditional branching, red-flag escalation, and report generation. Model layers are adapters for transcription, structured extraction, wording, and speech. Browser transcript capture remains a development fallback when local STT is unavailable.
 
 v0.2 adds a language selector for:
 
@@ -33,12 +35,21 @@ v0.2 adds a language selector for:
 
 Chinese mode uses an independent Chinese UI, Chinese call script, Chinese speech recognition language setting, Chinese text-to-speech voice preference, and Chinese-aware validation/red-flag rules.
 
-Final doctor reports are generated as formatted JSON with stable English keys for easier downstream machine processing.
+Final reports are generated as formatted JSON with stable English keys. The primary v0.9.0 section is `questionnaire_response`, which stores normalized answers, raw participant wording, skipped conditional fields, completion status, and source-material metadata.
 
+## v0.9.0 DOCX/Audio Questionnaire Flow
+
+v0.9.0 replaces the active short pain-check-in with the questionnaire defined by:
+
+- `data/OA问卷-房山-简化-v2.docx`
+- `data/新录音 4.m4a`
+- `data/新录音 4.txt`
+
+The active flow collects diagnosis status, affected joints, symptom duration, recent flare details, past-year flare frequency, usual pain response, oral analgesic use, adherence behavior, adverse reactions, improvement after medication, consolidation-medication willingness, non-oral treatments, medicine acquisition channels, hospital/community doctor counseling, and retail-pharmacy guidance fields when applicable.
 
 ## v0.8 Visual Refresh
 
-v0.8 makes the browser UI stakeholder-demo ready while keeping the existing clinical and privacy architecture intact:
+v0.8 made the browser UI stakeholder-demo ready while keeping the existing clinical and privacy architecture intact:
 
 - Voice-call surface with a large assistant presence and clearer listening/speaking/processing states.
 - v0.8.1 adds a per-turn recording timer, microphone activity meter, and clearer recording/processing cleanup.

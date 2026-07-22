@@ -481,7 +481,7 @@ def _realtime_instructions(language: str, session_id: str, initial_prompt: str) 
     else:
         language_rule = "Speak English unless the patient clearly switches language."
     return (
-        "You are a warm, concise voice assistant conducting an osteoarthritis home pain check-in. "
+        "You are a warm, concise voice assistant conducting an osteoarthritis medication and treatment questionnaire. "
         "This is a research prototype, not emergency care. Sound natural in a live phone conversation: "
         "short acknowledgements, one question at a time, no long monologues. "
         f"{language_rule} "

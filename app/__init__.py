@@ -1,1 +1,1 @@
-"""OA Home Pain Check-in Assistant backend package."""
+"""OA medication questionnaire voice assistant backend package."""
