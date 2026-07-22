@@ -94,7 +94,7 @@ export COSYVOICE_MODE="instruct2"
 
 If the default prompt wav is not present on the server, set `COSYVOICE_PROMPT_WAV` to a short consented bot-voice reference wav.
 
-See `docs/v0.7-private-pipeline.md` for model contracts, streaming roadmap, and Covo/GLM research notes.
+See `docs/v0.7-private-pipeline.md` for model contracts, streaming roadmap, and Covo/GLM research notes. See `docs/tts-latency-service.md` for the warmed server-TTS sidecar and latency-measurement runbook.
 
 ## v0.6 Covo Half-Duplex Experiment
 

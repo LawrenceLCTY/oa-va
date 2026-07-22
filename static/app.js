@@ -62,6 +62,14 @@ let recognition = null;
 let recognizing = false;
 let selectedVoice = null;
 let fallbackAudio = null;
+let fallbackAudioUrl = null;
+let fallbackAudioResolve = null;
+let browserSpeechResolve = null;
+let privateVadSpeechDetected = false;
+let privateVadSilentSince = null;
+let privateVadStartedAt = 0;
+let privateAutoStopTimer = null;
+let serverTtsFailureCount = 0;
 let audioContext = null;
 let audioAnalyser = null;
 let audioMeterFrame = null;
@@ -103,7 +111,7 @@ const UI = {
     turnIdle: "每次回答一句完整内容",
     turnRecording: "正在录音，请自然说话",
     turnProcessing: "正在整理你的回答",
-    browserFallbackStarted: "本地语音合成不可用，已切换到基础随访模式。",
+    browserFallbackStarted: "服务器语音暂不可用，本次使用浏览器语音。",
     micUnavailable: "无法打开麦克风。请检查浏览器权限。",
     inputPlaceholder: "需要时可输入补充回答",
     inputAria: "补充回答",
@@ -189,7 +197,7 @@ const UI = {
     turnIdle: "One complete answer per turn",
     turnRecording: "Recording now. Speak naturally",
     turnProcessing: "Processing your answer",
-    browserFallbackStarted: "Local speech synthesis is unavailable, so I switched to the base check-in mode.",
+    browserFallbackStarted: "Server voice is temporarily unavailable, using browser voice for this response.",
     micUnavailable: "Could not open the microphone. Check browser permissions.",
     inputPlaceholder: "Type a backup answer if needed",
     inputAria: "Backup answer",
@@ -236,6 +244,10 @@ if (SpeechRecognition) {
   });
   recognition.addEventListener("end", () => {
     recognizing = false;
+    if (privateMode && privateRecorder?.state === "recording" && privateTranscriptDraft.trim()) {
+      schedulePrivateAutoStop(350);
+      return;
+    }
     if (fallbackMode && !lastState?.complete) {
       stopVoiceMeter();
       resetTurnStatus();
@@ -253,6 +265,7 @@ if (SpeechRecognition) {
     if (text) {
       if (privateMode) {
         privateTranscriptDraft = `${privateTranscriptDraft} ${text}`.trim();
+        schedulePrivateAutoStop(450);
         return;
       }
       messageInput.value = "";
@@ -454,9 +467,11 @@ async function startPrivateCall() {
       addMessage("assistant", message);
     }
     await speakFallbackQueue(payload.assistant_messages || []);
-    stopVoiceMeter();
-    resetTurnStatus();
-    setCallMode(lastState?.complete ? "complete" : "ready");
+    if (!(await autoListenForPrivateAnswer())) {
+      stopVoiceMeter();
+      resetTurnStatus();
+      setCallMode(lastState?.complete ? "complete" : "ready");
+    }
   } catch (error) {
     console.error(error);
     endRealtimeCall({ keepTranscript: true });
@@ -723,9 +738,17 @@ async function submitFallbackAnswer(text) {
 }
 
 async function speakFallbackQueue(messages) {
-  for (const message of messages) {
-    await speakFallback(message);
+  const spokenText = (messages || []).map((message) => String(message || "").trim()).filter(Boolean).join(" ");
+  if (spokenText) {
+    await speakFallback(spokenText);
   }
+}
+
+async function autoListenForPrivateAnswer() {
+  if (!privateMode || !sessionId || lastState?.complete) {
+    return false;
+  }
+  return beginPrivateTurnRecording({ interruptSpeech: false });
 }
 
 function speakFallback(text) {
@@ -737,6 +760,7 @@ function speakFallback(text) {
 
 async function speakServerTts(text) {
   try {
+    const requestStartedAt = performance.now();
     const response = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -745,22 +769,40 @@ async function speakServerTts(text) {
     if (!response.ok) {
       throw new Error("server tts unavailable");
     }
+    const ttsLatencyMs = response.headers.get("X-TTS-Latency-Ms");
+    const ttsEngine = response.headers.get("X-TTS-Engine");
     const blob = await response.blob();
+    serverTtsFailureCount = 0;
+    console.debug("server tts", {
+      engine: ttsEngine,
+      serverLatencyMs: ttsLatencyMs,
+      browserFetchMs: Math.round(performance.now() - requestStartedAt),
+      bytes: blob.size,
+    });
     const audioUrl = URL.createObjectURL(blob);
-    if (fallbackAudio) {
-      fallbackAudio.pause();
-      fallbackAudio = null;
-    }
+    stopAssistantSpeech();
+    fallbackAudioUrl = audioUrl;
     fallbackAudio = new Audio(audioUrl);
     setCallMode("speaking");
     await new Promise((resolve) => {
-      fallbackAudio.onended = resolve;
-      fallbackAudio.onerror = resolve;
-      fallbackAudio.play().catch(resolve);
+      fallbackAudioResolve = resolve;
+      const finish = () => {
+        fallbackAudioResolve = null;
+        if (fallbackAudioUrl) {
+          URL.revokeObjectURL(fallbackAudioUrl);
+          fallbackAudioUrl = null;
+        }
+        resolve();
+      };
+      fallbackAudio.onended = finish;
+      fallbackAudio.onerror = finish;
+      fallbackAudio.play().catch(finish);
     });
-    URL.revokeObjectURL(audioUrl);
   } catch (error) {
-    serverVoiceFallback = false;
+    serverTtsFailureCount += 1;
+    if (serverTtsFailureCount >= 2) {
+      serverVoiceFallback = false;
+    }
     addMessage("system", ui().browserFallbackStarted);
     await speakBrowserTts(text);
   }
@@ -781,12 +823,100 @@ function speakBrowserTts(text) {
     } else {
       utterance.lang = currentLanguage;
     }
-    utterance.onend = resolve;
-    utterance.onerror = resolve;
+    const finish = () => {
+      browserSpeechResolve = null;
+      resolve();
+    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    browserSpeechResolve = finish;
     window.speechSynthesis.cancel();
     setCallMode("speaking");
     window.speechSynthesis.speak(utterance);
   });
+}
+
+function stopAssistantSpeech() {
+  if (fallbackAudio) {
+    fallbackAudio.pause();
+    fallbackAudio.removeAttribute("src");
+    fallbackAudio.load();
+    fallbackAudio = null;
+  }
+  if (fallbackAudioUrl) {
+    URL.revokeObjectURL(fallbackAudioUrl);
+    fallbackAudioUrl = null;
+  }
+  if (fallbackAudioResolve) {
+    const resolve = fallbackAudioResolve;
+    fallbackAudioResolve = null;
+    resolve();
+  }
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  if (browserSpeechResolve) {
+    const resolve = browserSpeechResolve;
+    browserSpeechResolve = null;
+    resolve();
+  }
+}
+
+function stopPrivateTurnRecording() {
+  if (!privateRecorder || privateRecorder.state !== "recording") {
+    return;
+  }
+  clearPrivateAutoStop();
+  privateRecorder.stop();
+  stopVoiceMeter({ keepTimer: true });
+  setTurnStatus(ui().turnProcessing);
+  setButtonLabel(voiceButton, ui().recordTurn);
+  if (recognition && recognizing) {
+    recognition.stop();
+  }
+}
+
+function schedulePrivateAutoStop(delayMs) {
+  clearPrivateAutoStop();
+  privateAutoStopTimer = setTimeout(() => {
+    if (privateMode && privateRecorder?.state === "recording") {
+      stopPrivateTurnRecording();
+    }
+  }, delayMs);
+}
+
+function clearPrivateAutoStop() {
+  if (privateAutoStopTimer) {
+    clearTimeout(privateAutoStopTimer);
+    privateAutoStopTimer = null;
+  }
+}
+
+function updatePrivateAutoEndpoint(level) {
+  if (!privateMode || privateRecorder?.state !== "recording") {
+    return;
+  }
+  const now = Date.now();
+  if (!privateVadStartedAt) {
+    privateVadStartedAt = now;
+  }
+  const speechThreshold = 14;
+  const silenceThreshold = 8;
+  if (level >= speechThreshold) {
+    privateVadSpeechDetected = true;
+    privateVadSilentSince = null;
+    return;
+  }
+  if (!privateVadSpeechDetected || now - privateVadStartedAt < 900 || level > silenceThreshold) {
+    return;
+  }
+  if (!privateVadSilentSince) {
+    privateVadSilentSince = now;
+    return;
+  }
+  if (now - privateVadSilentSince >= 1400) {
+    stopPrivateTurnRecording();
+  }
 }
 
 function toggleFallbackMic() {
@@ -817,14 +947,21 @@ async function togglePrivateTurnRecording() {
     return;
   }
   if (privateRecorder && privateRecorder.state === "recording") {
-    privateRecorder.stop();
-    stopVoiceMeter({ keepTimer: true });
-    setTurnStatus(ui().turnProcessing);
-    setButtonLabel(voiceButton, ui().recordTurn);
-    if (recognition && recognizing) {
-      recognition.stop();
-    }
+    stopPrivateTurnRecording();
     return;
+  }
+  await beginPrivateTurnRecording({ interruptSpeech: true });
+}
+
+async function beginPrivateTurnRecording(options = {}) {
+  if (!sessionId || lastState?.complete) {
+    return false;
+  }
+  if (privateRecorder && privateRecorder.state === "recording") {
+    return true;
+  }
+  if (options.interruptSpeech !== false) {
+    stopAssistantSpeech();
   }
   try {
     if (!localStream) {
@@ -838,6 +975,9 @@ async function togglePrivateTurnRecording() {
     }
     privateAudioChunks = [];
     privateTranscriptDraft = "";
+    privateVadSpeechDetected = false;
+    privateVadSilentSince = null;
+    privateVadStartedAt = 0;
     const mimeType = preferredRecordingMimeType();
     privateRecorder = new MediaRecorder(localStream, mimeType ? { mimeType } : undefined);
     discardPrivateRecording = false;
@@ -847,6 +987,7 @@ async function togglePrivateTurnRecording() {
       }
     });
     privateRecorder.addEventListener("stop", submitPrivateRecordedTurn);
+    clearPrivateAutoStop();
     privateRecorder.start();
     startPrivateSpeechRecognition();
     startVoiceMeter(localStream);
@@ -854,9 +995,11 @@ async function togglePrivateTurnRecording() {
     setTurnStatus(ui().turnRecording);
     setButtonLabel(voiceButton, ui().stopTurn);
     setCallMode("listening");
+    return true;
   } catch (error) {
     addMessage("system", ui().micUnavailable);
     setCallMode("error");
+    return false;
   }
 }
 
@@ -900,13 +1043,16 @@ function updateVoiceMeter() {
   }
   audioAnalyser.getByteFrequencyData(audioMeterData);
   const groupSize = Math.max(1, Math.floor(audioMeterData.length / meterBars.length));
+  let total = 0;
   meterBars.forEach((bar, index) => {
     const start = index * groupSize;
     const slice = audioMeterData.slice(start, start + groupSize);
     const average = slice.reduce((sum, value) => sum + value, 0) / Math.max(1, slice.length);
+    total += average;
     const height = 8 + Math.min(30, Math.round((average / 255) * 34));
     bar.style.setProperty("--level", `${height}px`);
   });
+  updatePrivateAutoEndpoint(total / Math.max(1, meterBars.length));
   audioMeterFrame = requestAnimationFrame(updateVoiceMeter);
 }
 
@@ -916,6 +1062,7 @@ function stopVoiceMeter(options = {}) {
     cancelAnimationFrame(audioMeterFrame);
     audioMeterFrame = null;
   }
+  clearPrivateAutoStop();
   if (audioContext) {
     audioContext.close().catch(() => {});
   }
@@ -983,7 +1130,7 @@ function startPrivateSpeechRecognition() {
   try {
     recognition.lang = currentLanguage;
     recognition.interimResults = false;
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.start();
   } catch (error) {
     return;
@@ -1037,9 +1184,11 @@ async function submitPrivateRecordedTurn() {
       addMessage("assistant", message);
     }
     await speakFallbackQueue(payload.assistant_messages || []);
-    stopVoiceMeter();
-    resetTurnStatus();
-    setCallMode(lastState?.complete ? "complete" : "ready");
+    if (!(await autoListenForPrivateAnswer())) {
+      stopVoiceMeter();
+      resetTurnStatus();
+      setCallMode(lastState?.complete ? "complete" : "ready");
+    }
   } catch (error) {
     addMessage("system", error.message || ui().privateUnavailable);
     stopVoiceMeter();
@@ -1101,15 +1250,15 @@ function endRealtimeCall(options = {}) {
   privateMode = false;
   privateAudioChunks = [];
   privateTranscriptDraft = "";
+  privateVadSpeechDetected = false;
+  privateVadSilentSince = null;
+  privateVadStartedAt = 0;
   if (privateRecorder && privateRecorder.state === "recording") {
     discardPrivateRecording = true;
     privateRecorder.stop();
   }
   privateRecorder = null;
-  if (fallbackAudio) {
-    fallbackAudio.pause();
-    fallbackAudio = null;
-  }
+  stopAssistantSpeech();
   if (dataChannel) {
     dataChannel.close();
     dataChannel = null;

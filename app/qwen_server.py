@@ -7,8 +7,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 
 DEFAULT_MODEL_PATH = "/home/lawrencelcty/huggingface/models/Qwen/Qwen3-0.6B-FP8"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(ROOT_DIR / ".env")
 
 
 class QwenModel:

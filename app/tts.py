@@ -7,6 +7,8 @@ import math
 import os
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 import wave
 from pathlib import Path
 from typing import Any
@@ -35,7 +37,7 @@ DEFAULT_NUMBA_CACHE_DIR = Path(tempfile.gettempdir()) / "oa_voice_assistant_numb
 class LocalTTS:
     """OpenAI TTS adapter with local Qwen/Kokoro fallbacks."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, allow_remote_service: bool = True) -> None:
         self.cache_dir = DEFAULT_TTS_CACHE_DIR
         self._pipelines: dict[str, Any] = {}
         self._qwen_model: Any | None = None
@@ -44,15 +46,23 @@ class LocalTTS:
         self.last_trace: dict[str, object] | None = None
         self.openai = OpenAIClient()
         self.prefer_local = _env_enabled("PREFER_SERVER_TTS")
+        self.allow_remote_service = allow_remote_service
+        self.remote_service_url = os.getenv("TTS_SERVICE_URL", "").strip().rstrip("/")
+        self.remote_timeout_seconds = float(os.getenv("TTS_SERVICE_TIMEOUT_SECONDS", "20"))
 
     def status(self) -> dict[str, object]:
         qwen_path = _qwen_model_dir()
         cosy_path = _cosyvoice_model_dir()
         cosy_prompt = _cosyvoice_prompt_wav()
         return {
-            "enabled": self.prefer_local or _cosyvoice_enabled() or _qwen_enabled(self.openai.enabled),
+            "enabled": self.enabled,
             "prefer_local": self.prefer_local,
             "engine": "cosyvoice3+openai+qwen3tts",
+            "remote_service": {
+                "enabled": bool(self.allow_remote_service and self.remote_service_url),
+                "url": self.remote_service_url,
+                "timeout_seconds": self.remote_timeout_seconds,
+            },
             "openai": self.openai.status(),
             "cosyvoice3": {
                 "enabled": _cosyvoice_enabled(),
@@ -92,7 +102,7 @@ class LocalTTS:
 
     @property
     def enabled(self) -> bool:
-        return self.prefer_local or _cosyvoice_enabled() or _qwen_enabled(self.openai.enabled)
+        return bool(self.allow_remote_service and self.remote_service_url) or self.prefer_local or _cosyvoice_enabled() or _qwen_enabled(self.openai.enabled)
 
     def synthesize(self, text: str, language: str) -> tuple[bytes | None, str, str | None]:
         if not self.enabled:
@@ -102,6 +112,12 @@ class LocalTTS:
         if not cleaned:
             self.last_trace = {"engine": "none", "success": False, "error": "empty tts text"}
             return None, "audio/wav", "empty tts text"
+
+        remote_err = None
+        if self.allow_remote_service and self.remote_service_url:
+            audio, content_type, remote_err = self._synthesize_remote_service(cleaned, language)
+            if audio:
+                return audio, content_type, None
 
         err = None
         if _cosyvoice_enabled():
@@ -122,7 +138,7 @@ class LocalTTS:
         if audio:
             self.last_trace = {"engine": "openai_tts", "success": True}
             return audio, content_type, None
-        err = err or openai_err
+        err = err or remote_err or openai_err
         if _qwen_enabled(self.openai.enabled):
             content_type = "audio/wav"
             cache_path = self._cache_path(cleaned, _qwen_language(language), _qwen_speaker(language), "qwen3tts")
@@ -158,6 +174,38 @@ class LocalTTS:
             self.last_trace = {"engine": "kokoro", "success": False, "error": f"{type(exc).__name__}: {exc}"}
             return None, "audio/wav", f"{type(exc).__name__}: {exc}"
 
+    def _synthesize_remote_service(self, text: str, language: str) -> tuple[bytes | None, str, str | None]:
+        payload = json.dumps({"text": text, "language": language}, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.remote_service_url}/api/tts",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.remote_timeout_seconds) as response:
+                audio = response.read()
+                content_type = response.headers.get("Content-Type", "audio/wav")
+                self.last_trace = {
+                    "engine": "remote_tts_service",
+                    "success": True,
+                    "service_url": self.remote_service_url,
+                    "content_type": content_type,
+                    "audio_bytes": len(audio),
+                    "service_engine": response.headers.get("X-TTS-Engine", ""),
+                    "service_latency_ms": response.headers.get("X-TTS-Latency-Ms", ""),
+                }
+                return audio, content_type, None
+        except (urllib.error.URLError, TimeoutError) as exc:
+            err = f"remote TTS service unavailable: {type(exc).__name__}: {exc}"
+            self.last_trace = {
+                "engine": "remote_tts_service",
+                "success": False,
+                "service_url": self.remote_service_url,
+                "error": err,
+            }
+            return None, "audio/wav", err
+
     def _synthesize_cosyvoice(self, text: str, language: str) -> bytes:
         model = self._cosyvoice_pipeline()
         chunks = []
@@ -166,7 +214,7 @@ class LocalTTS:
         if mode == "instruct2":
             generator = model.inference_instruct2(
                 text,
-                _cosyvoice_instruction(language),
+                _cosyvoice_prompt_with_end_marker(_cosyvoice_instruction(language)),
                 prompt_wav,
                 stream=_cosyvoice_stream_enabled(),
             )
@@ -205,15 +253,14 @@ class LocalTTS:
                 "CosyVoice is not importable. Install the FunAudioLLM/CosyVoice runtime in this environment "
                 "or set COSYVOICE_REPO_DIR to the cloned CosyVoice repo."
             ) from exc
-        kwargs = _accepted_kwargs(
-            AutoModel,
-            {
-                "model_dir": str(model_dir),
-                "load_jit": _cosyvoice_jit_enabled(),
-                "load_trt": _cosyvoice_trt_enabled(),
-                "fp16": _cosyvoice_fp16_enabled(),
-            },
-        )
+        kwargs = {
+            "model_dir": str(model_dir),
+            "load_trt": _cosyvoice_trt_enabled(),
+            "fp16": _cosyvoice_fp16_enabled(),
+        }
+        if (model_dir / "cosyvoice.yaml").exists() or (model_dir / "cosyvoice2.yaml").exists():
+            kwargs["load_jit"] = _cosyvoice_jit_enabled()
+        kwargs = _accepted_kwargs(AutoModel, kwargs)
         if "model_dir" in kwargs:
             self._cosyvoice_model = AutoModel(**kwargs)
         else:
@@ -322,6 +369,11 @@ def _cosyvoice_repo_dir() -> Path:
 def _cosyvoice_prompt_wav() -> Path:
     return Path(os.getenv("COSYVOICE_PROMPT_WAV", COSYVOICE_PROMPT_WAV))
 
+
+
+def _cosyvoice_prompt_with_end_marker(text: str) -> str:
+    text = text.strip()
+    return text if "<|endofprompt|>" in text else f"{text}<|endofprompt|>"
 
 def _cosyvoice_prompt_text() -> str:
     return os.getenv("COSYVOICE_PROMPT_TEXT", COSYVOICE_PROMPT_TEXT)

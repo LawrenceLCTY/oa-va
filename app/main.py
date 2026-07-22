@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -358,14 +359,29 @@ class OARequestHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/tts":
+            started = time.perf_counter()
             data = self._read_json()
             text = str(data.get("text", ""))
             language = str(data.get("language", "en"))
             audio, content_type, err = TTS.synthesize(text, language)
+            latency_ms = int((time.perf_counter() - started) * 1000)
             if not audio:
-                self._send_json({"error": err or "tts unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                self._send_json(
+                    {
+                        "error": err or "tts unavailable",
+                        "trace": TTS.last_trace,
+                        "latency_ms": latency_ms,
+                    },
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
                 return
-            self._send_bytes(audio, content_type)
+            trace = TTS.last_trace if isinstance(TTS.last_trace, dict) else {}
+            headers = {
+                "X-TTS-Latency-Ms": str(latency_ms),
+                "X-TTS-Engine": str(trace.get("engine") or "unknown"),
+                "X-TTS-Cached": str(trace.get("cached", "")).lower(),
+            }
+            self._send_bytes(audio, content_type, headers=headers)
             return
 
         if parsed.path == "/api/stt":
@@ -409,11 +425,19 @@ class OARequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_bytes(self, body: bytes, content_type: str, status: HTTPStatus = HTTPStatus.OK) -> None:
+    def _send_bytes(
+        self,
+        body: bytes,
+        content_type: str,
+        status: HTTPStatus = HTTPStatus.OK,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
