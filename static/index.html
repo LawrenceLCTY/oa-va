@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OA Home Pain Check-in Assistant v0.8</title>
+    <title>OA Questionnaire Voice Assistant v0.9.0</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <main class="app-shell">
-      <section class="assistant-workspace" aria-label="OA Home Pain Check-in Assistant">
+      <section class="assistant-workspace" aria-label="OA Questionnaire Voice Assistant">
         <header class="app-header">
           <div class="brand-block">
             <img class="brand-logo" src="/static/assets/bjmu-logo.svg" alt="北京大学医学部" />
             <div class="brand-copy">
               <p id="eyebrowText" class="eyebrow">私有语音随访原型</p>
-              <h1 id="appTitle">骨关节炎疼痛随访</h1>
+              <h1 id="appTitle">骨关节炎用药问卷</h1>
               <p id="disclaimerText" class="disclaimer">研究原型：尚未批准用于临床。</p>
             </div>
           </div>
@@ -98,11 +98,11 @@
             <h2 id="stateTitle">随访状态</h2>
           </div>
           <ol class="progress-rail" aria-label="Check-in progress">
-            <li class="progress-item" data-step-key="identity"><span></span><strong>Identity</strong></li>
-            <li class="progress-item" data-step-key="pain"><span></span><strong>Pain</strong></li>
-            <li class="progress-item" data-step-key="function"><span></span><strong>Function</strong></li>
-            <li class="progress-item" data-step-key="treatment"><span></span><strong>Treatment</strong></li>
-            <li class="progress-item" data-step-key="side_effects"><span></span><strong>Side effects</strong></li>
+            <li class="progress-item" data-step-key="diagnosis"><span></span><strong>Diagnosis</strong></li>
+            <li class="progress-item" data-step-key="flare"><span></span><strong>Flare</strong></li>
+            <li class="progress-item" data-step-key="medication"><span></span><strong>Medication</strong></li>
+            <li class="progress-item" data-step-key="treatments"><span></span><strong>Treatments</strong></li>
+            <li class="progress-item" data-step-key="pharmacy"><span></span><strong>Pharmacy</strong></li>
             <li class="progress-item" data-step-key="red_flags"><span></span><strong>Red flags</strong></li>
             <li class="progress-item" data-step-key="complete"><span></span><strong>Report</strong></li>
           </ol>
@@ -112,7 +112,7 @@
               <dd id="stepValue">未开始</dd>
             </div>
             <div>
-              <dt id="painLabel">疼痛</dt>
+              <dt id="painLabel">问卷</dt>
               <dd id="painValue">未记录</dd>
             </div>
             <div>
@@ -120,7 +120,7 @@
               <dd id="redFlagValue">未筛查</dd>
             </div>
             <div>
-              <dt id="identityLabel">身份</dt>
+              <dt id="identityLabel">编号</dt>
               <dd id="identityValue">未确认</dd>
             </div>
           </dl>

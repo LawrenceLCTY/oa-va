@@ -73,7 +73,7 @@ const UI = {
   "zh-CN": {
     htmlLang: "zh-CN",
     eyebrow: "私有语音随访原型",
-    title: "骨关节炎疼痛随访",
+    title: "骨关节炎用药问卷",
     disclaimer: "研究原型：尚未批准用于临床。",
     language: "语言",
     ready: "准备就绪",
@@ -84,7 +84,7 @@ const UI = {
     complete: "已完成",
     urgentFlag: "紧急标记",
     error: "错误",
-    start: "开始语音随访",
+    start: "开始语音问卷",
     restart: "重新开始",
     end: "结束",
     recordTurn: "开始回答",
@@ -97,7 +97,7 @@ const UI = {
     callEnded: "通话已结束。",
     realtimeUnavailable: "实时语音不可用，正在使用本地语音随访。",
     fallbackStarted: "已切换到基础本地随访模式。",
-    privateStarted: "已进入 v0.7 私有可解释语音流水线。请按“开始回答”，说完后按“结束回答”。",
+    privateStarted: "已进入 v0.9.0 私有语音问卷流水线。请按“开始回答”，说完后按“结束回答”。",
     privateUnavailable: "私有语音流水线暂不可用，正在使用基础本地随访。",
     privateRecordHint: "按“开始回答”后说一句完整回答；系统会用本地语音识别和规则引擎处理。",
     turnIdle: "每次回答一句完整内容",
@@ -116,10 +116,10 @@ const UI = {
     copyFailed: "无法复制报告。",
     stateTitle: "随访状态",
     step: "步骤",
-    pain: "疼痛",
+    pain: "问卷",
     redFlags: "危险信号",
-    identity: "身份",
-    report: "医生报告",
+    identity: "编号",
+    report: "结构化报告",
     save: "保存",
     notStarted: "未开始",
     notCaptured: "未记录",
@@ -136,6 +136,37 @@ const UI = {
       readiness_hearing: "听力确认",
       readiness_time: "时间确认",
       permission: "同意继续",
+      survey_id: "调查对象编号",
+      oa_diagnosis: "骨关节炎诊断",
+      affected_joints: "受累关节",
+      symptom_duration: "症状持续时间",
+      last_flare_onset: "最近发作时间",
+      last_flare_duration: "最近发作持续时间",
+      last_flare_pain_score: "最近发作疼痛评分",
+      annual_flare_frequency: "一年发作次数",
+      usual_pain_response: "疼痛处理方式",
+      oral_painkiller_used: "是否口服止痛药",
+      oral_painkiller_name: "止痛药名称",
+      oral_painkiller_no_reason: "未服药原因",
+      adherence_to_doctor_order: "遵医嘱服药",
+      missed_doses: "忘记服药",
+      stopped_after_improvement: "好转后停药",
+      difficulty_taking_as_directed: "按时按量困难",
+      missed_dose_reasons: "忘记服药原因",
+      adverse_reactions: "不良反应",
+      adverse_reaction_symptoms: "不良反应症状",
+      pain_improvement_after_meds: "疼痛改善",
+      function_improvement_after_meds: "活动能力改善",
+      consolidation_medication_willingness: "巩固用药意愿",
+      non_oral_treatments: "其他治疗",
+      painkiller_channels: "止痛药渠道",
+      doctor_counseling: "医生用药讲解",
+      retail_pharmacy_reasons: "药店购买原因",
+      retail_pharmacy_purchase_method: "药店购买方式",
+      pharmacy_guidance_contraindications: "禁忌症询问",
+      pharmacy_guidance_dosage: "用法用量指导",
+      pharmacy_guidance_avoid_multiple_painkillers: "避免多种止痛药",
+      pharmacy_guidance_long_term_risks: "长期用药风险",
       identity: "身份确认",
       respondent_source: "回答来源",
       average_pain_score: "24小时平均疼痛",
@@ -159,7 +190,7 @@ const UI = {
   en: {
     htmlLang: "en",
     eyebrow: "Private Voice Prototype",
-    title: "OA Home Pain Check-in",
+    title: "OA Medication Questionnaire",
     disclaimer: "Research prototype -- not approved for clinical use.",
     language: "Language",
     ready: "Ready",
@@ -170,7 +201,7 @@ const UI = {
     complete: "Complete",
     urgentFlag: "Urgent flag",
     error: "Error",
-    start: "Start Voice Check-in",
+    start: "Start Voice Questionnaire",
     restart: "Restart",
     end: "End",
     recordTurn: "Start Answer",
@@ -183,7 +214,7 @@ const UI = {
     callEnded: "Call ended.",
     realtimeUnavailable: "Realtime voice is unavailable, using local voice check-in.",
     fallbackStarted: "Switched to the basic local check-in mode.",
-    privateStarted: "v0.7 private explainable voice pipeline is active. Press Start Answer, speak one complete answer, then stop.",
+    privateStarted: "v0.9.0 private questionnaire voice pipeline is active. Press Start Answer, speak one complete answer, then stop.",
     privateUnavailable: "Private voice pipeline is unavailable, so I switched to the basic local check-in.",
     privateRecordHint: "Press Start Answer, speak one complete answer, then stop. Local STT and the rule engine will process it.",
     turnIdle: "One complete answer per turn",
@@ -202,10 +233,10 @@ const UI = {
     copyFailed: "Could not copy report.",
     stateTitle: "Check-in State",
     step: "Step",
-    pain: "Pain",
+    pain: "Questionnaire",
     redFlags: "Red Flags",
-    identity: "Identity",
-    report: "Doctor Report",
+    identity: "Survey ID",
+    report: "Structured Report",
     save: "Save",
     notStarted: "Not started",
     notCaptured: "Not captured",
@@ -1196,16 +1227,19 @@ function updateState(state) {
   lastState = state;
   updateConversationLayout();
   stepValue.textContent = labelizeStep(state.step);
-  painValue.textContent =
-    state.pain?.score === null || state.pain?.score === undefined
-      ? ui().notCaptured
-      : `24h ${state.pain.average_24h_score ?? "?"}/10; now ${state.pain.score}/10 (${state.pain.severity})`;
+  const completion = state.questionnaire?.completion;
+  const answerCount = Object.keys(state.questionnaire?.answers || {}).length;
+  painValue.textContent = completion?.required_count
+    ? `${completion.complete_count}/${completion.required_count}`
+    : answerCount
+      ? `${answerCount} answers`
+      : ui().notCaptured;
   redFlagValue.textContent = state.safety?.red_flag_present
     ? `${ui().yes}: ${state.safety.red_flag_symptoms.join(", ")}`
     : state.safety?.red_flag_uncertain
       ? ui().uncertain
       : ui().noUrgentFlags;
-  identityValue.textContent = state.identity?.status || ui().notConfirmed;
+  identityValue.textContent = state.questionnaire?.answers?.survey_id?.value || state.identity?.status || ui().notConfirmed;
 
   updateProgressRail(state);
 
@@ -1271,25 +1305,40 @@ function updateProgressRail(state) {
 }
 
 function progressKeyForStep(step) {
-  if (!step) return "identity";
-  if (["identity", "respondent_source", "readiness_hearing", "readiness_time", "permission"].includes(step)) return "identity";
-  if (["average_pain_score", "current_pain_score", "pain_location"].includes(step)) return "pain";
-  if (["functional_impact", "usual_comparison"].includes(step)) return "function";
-  if (["treatment_context"].includes(step)) return "treatment";
-  if (step.startsWith("side_effect") || ["medication_changed", "doctor_contacted", "emergency_visit"].includes(step)) return "side_effects";
+  if (!step) return "diagnosis";
+  if (["readiness_hearing", "readiness_time", "permission", "survey_id", "oa_diagnosis", "affected_joints", "symptom_duration"].includes(step)) return "diagnosis";
+  if (["last_flare_onset", "last_flare_duration", "last_flare_pain_score", "annual_flare_frequency", "usual_pain_response"].includes(step)) return "flare";
+  if ([
+    "oral_painkiller_used",
+    "oral_painkiller_name",
+    "oral_painkiller_no_reason",
+    "adherence_to_doctor_order",
+    "missed_doses",
+    "stopped_after_improvement",
+    "difficulty_taking_as_directed",
+    "missed_dose_reasons",
+    "adverse_reactions",
+    "adverse_reaction_symptoms",
+    "pain_improvement_after_meds",
+    "function_improvement_after_meds",
+    "consolidation_medication_willingness",
+  ].includes(step)) return "medication";
+  if (["non_oral_treatments", "painkiller_channels", "doctor_counseling"].includes(step)) return "treatments";
+  if (step.startsWith("retail_pharmacy") || step.startsWith("pharmacy_guidance")) return "pharmacy";
   if (step === "red_flags") return "red_flags";
   if (step === "complete") return "complete";
-  return "identity";
+  return "diagnosis";
 }
 
 function completedProgressKeys(state) {
   const done = new Set();
   if (!state) return done;
-  if (state.identity?.status && state.identity.status !== "missing") done.add("identity");
-  if (state.pain?.score !== null && state.pain?.score !== undefined) done.add("pain");
-  if (state.pain?.functional_impact || state.pain?.usual_comparison) done.add("function");
-  if (state.safety?.medication_context) done.add("treatment");
-  if (state.safety?.side_effect_screening_result && state.safety.side_effect_screening_result !== "unknown") done.add("side_effects");
+  const answers = state.questionnaire?.answers || {};
+  if (answers.oa_diagnosis && answers.affected_joints && answers.symptom_duration) done.add("diagnosis");
+  if (answers.last_flare_pain_score && answers.annual_flare_frequency && answers.usual_pain_response) done.add("flare");
+  if (answers.oral_painkiller_used && answers.consolidation_medication_willingness) done.add("medication");
+  if (answers.non_oral_treatments && answers.painkiller_channels) done.add("treatments");
+  if (answers.retail_pharmacy_purchase_method || state.questionnaire?.skipped?.retail_pharmacy_purchase_method) done.add("pharmacy");
   if (state.safety?.red_flag_present || state.safety?.red_flag_uncertain || state.step === "complete" || state.complete) done.add("red_flags");
   if (state.complete) done.add("complete");
   return done;
@@ -1326,9 +1375,9 @@ function renderReportPreview(reportText) {
   reportVisual.appendChild(priority);
 
   addChipRow([
-    chip("Identity", report.medical_research_review?.clinical_completeness?.identity_complete),
-    chip("Pain scores", report.medical_research_review?.clinical_completeness?.pain_scores_complete),
-    chip("Function", report.medical_research_review?.clinical_completeness?.functional_anchor_complete),
+    chip("Questionnaire", report.medical_research_review?.clinical_completeness?.questionnaire_complete),
+    chip("Source DOCX", Boolean(report.questionnaire_response?.source_materials?.questionnaire_docx)),
+    chip("Sample audio", Boolean(report.questionnaire_response?.source_materials?.sample_audio)),
     chip("Red flags", !(report.safety_assessment?.red_flag_present || report.safety_assessment?.red_flag_uncertain), report.safety_assessment?.red_flag_present ? "danger" : "warn"),
     chip("Study usable", report.medical_research_review?.research_quality?.usable_for_study),
   ]);
@@ -1338,6 +1387,40 @@ function renderReportPreview(reportText) {
     ["Action advised", report.safety_assessment?.action_advised],
     ["Session", report.session?.conversation_type],
     ["Language", report.session?.language],
+  ]);
+  const q = report.questionnaire_response?.answers || {};
+  addReportSection("Questionnaire response", [
+    ["Survey ID", q.survey_id?.value],
+    ["Physician diagnosis", q.oa_diagnosis?.value],
+    ["Affected joints", listValue(q.affected_joints?.values)],
+    ["Symptom duration", q.symptom_duration?.value],
+    ["Last flare onset", q.last_flare_onset?.value],
+    ["Last flare duration", q.last_flare_duration?.value],
+    ["Last flare pain score", q.last_flare_pain_score?.value],
+    ["Annual flare frequency", q.annual_flare_frequency?.value],
+    ["Usual response", q.usual_pain_response?.value],
+    ["Oral painkiller used", q.oral_painkiller_used?.value],
+    ["Painkiller name", q.oral_painkiller_name?.value],
+    ["No-use reason", q.oral_painkiller_no_reason?.value],
+    ["Adherence to doctor order", q.adherence_to_doctor_order?.value],
+    ["Missed doses", q.missed_doses?.value],
+    ["Stopped after improvement", q.stopped_after_improvement?.value],
+    ["Difficult as directed", q.difficulty_taking_as_directed?.value],
+    ["Missed-dose reasons", listValue(q.missed_dose_reasons?.values)],
+    ["Adverse reactions", q.adverse_reactions?.value],
+    ["Adverse symptoms", listValue(q.adverse_reaction_symptoms?.values)],
+    ["Pain improvement", q.pain_improvement_after_meds?.value],
+    ["Function improvement", q.function_improvement_after_meds?.value],
+    ["Consolidation willingness", q.consolidation_medication_willingness?.value],
+    ["Non-oral treatments", listValue(q.non_oral_treatments?.values)],
+    ["Painkiller channels", listValue(q.painkiller_channels?.values)],
+    ["Doctor counseling", q.doctor_counseling?.value],
+    ["Retail reasons", listValue(q.retail_pharmacy_reasons?.values)],
+    ["Retail purchase method", q.retail_pharmacy_purchase_method?.value],
+    ["Contraindication guidance", q.pharmacy_guidance_contraindications?.value],
+    ["Dosage guidance", q.pharmacy_guidance_dosage?.value],
+    ["Multiple-painkiller warning", q.pharmacy_guidance_avoid_multiple_painkillers?.value],
+    ["Long-term-risk guidance", q.pharmacy_guidance_long_term_risks?.value],
   ]);
   addReportSection("Patient", [
     ["Name", report.patient_identity?.name],
@@ -1386,11 +1469,12 @@ function renderReportSummaryBand(report) {
   reportSummaryBand.hidden = false;
   reportSummaryBand.innerHTML = "";
   const priority = String(report.suggested_follow_up_priority || report.follow_up_priority || "Pending");
-  const pain = scoreWithSeverity(report.pain_assessment?.current_score, report.pain_assessment?.current_severity) || "Not captured";
+  const completion = report.questionnaire_response?.completion;
+  const questionnaire = completion?.required_count ? `${completion.complete_count}/${completion.required_count}` : "Not captured";
   const redFlags = report.safety_assessment?.red_flag_status || "unknown";
   reportSummaryBand.append(
     summaryPill("Priority", priority, isUrgentText(priority) ? "urgent" : ""),
-    summaryPill("Current pain", pain),
+    summaryPill("Questionnaire", questionnaire),
     summaryPill("Red flags", redFlags, redFlags === "yes" ? "urgent" : ""),
   );
 }
