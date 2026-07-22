@@ -13,15 +13,37 @@ QUESTION_STEPS = (
     "readiness_hearing",
     "readiness_time",
     "permission",
-    "identity",
-    "respondent_source",
-    "average_pain_score",
-    "current_pain_score",
-    "pain_location",
-    "functional_impact",
-    "usual_comparison",
-    "treatment_context",
-    "side_effects",
+    "survey_id",
+    "oa_diagnosis",
+    "affected_joints",
+    "symptom_duration",
+    "last_flare_onset",
+    "last_flare_duration",
+    "last_flare_pain_score",
+    "annual_flare_frequency",
+    "usual_pain_response",
+    "oral_painkiller_used",
+    "oral_painkiller_name",
+    "oral_painkiller_no_reason",
+    "adherence_to_doctor_order",
+    "missed_doses",
+    "stopped_after_improvement",
+    "difficulty_taking_as_directed",
+    "missed_dose_reasons",
+    "adverse_reactions",
+    "adverse_reaction_symptoms",
+    "pain_improvement_after_meds",
+    "function_improvement_after_meds",
+    "consolidation_medication_willingness",
+    "non_oral_treatments",
+    "painkiller_channels",
+    "doctor_counseling",
+    "retail_pharmacy_reasons",
+    "retail_pharmacy_purchase_method",
+    "pharmacy_guidance_contraindications",
+    "pharmacy_guidance_dosage",
+    "pharmacy_guidance_avoid_multiple_painkillers",
+    "pharmacy_guidance_long_term_risks",
     "red_flags",
     "closing",
     "complete",
@@ -82,6 +104,15 @@ class SafetyAssessment:
 
 
 @dataclass
+class QuestionnaireAssessment:
+    source_materials: dict[str, str] = field(default_factory=dict)
+    answers: dict[str, Any] = field(default_factory=dict)
+    raw_answers: dict[str, str] = field(default_factory=dict)
+    skipped: dict[str, str] = field(default_factory=dict)
+    completion: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class ConversationState:
     session_id: str = field(default_factory=lambda: str(uuid4()))
     created_at: str = field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
@@ -96,6 +127,7 @@ class ConversationState:
         }
     )
     respondent_source: str = "unknown"
+    questionnaire: QuestionnaireAssessment = field(default_factory=QuestionnaireAssessment)
     pain: PainAssessment = field(default_factory=PainAssessment)
     safety: SafetyAssessment = field(default_factory=SafetyAssessment)
     transcript: list[dict[str, str]] = field(default_factory=list)
@@ -126,6 +158,13 @@ class ConversationState:
             },
             "readiness": self.readiness,
             "respondent_source": self.respondent_source,
+            "questionnaire": {
+                "source_materials": self.questionnaire.source_materials,
+                "answers": self.questionnaire.answers,
+                "raw_answers": self.questionnaire.raw_answers,
+                "skipped": self.questionnaire.skipped,
+                "completion": self.questionnaire.completion,
+            },
             "pain": {
                 "score": self.pain.score,
                 "severity": self.pain.severity,

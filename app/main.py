@@ -62,7 +62,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
                     "local_ai": LOCAL_AI.status(),
                     "fallback": {
                         "enabled": True,
-                        "mode": "v0.7 private explainable pipeline with deterministic clinical conversation, local STT/TTS, and browser transcript fallback",
+                        "mode": "v0.9.0 DOCX/audio-guided questionnaire flow with deterministic validation, local STT/TTS, and browser transcript fallback",
                     },
                 }
             )
@@ -437,7 +437,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
 
 def run(host: str = "127.0.0.1", port: int = 8000) -> None:
     server = ThreadingHTTPServer((host, port), OARequestHandler)
-    print(f"OA Home Pain Check-in Assistant running at http://{host}:{port}")
+    print(f"OA Questionnaire Voice Assistant running at http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

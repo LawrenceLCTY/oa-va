@@ -44,8 +44,8 @@ class PrivateVoicePipeline:
     """Explainable private voice-agent pipeline.
 
     The pipeline keeps model responsibilities narrow:
-    STT turns patient audio into text, ConversationEngine owns clinical state
-    and safety, and TTS is handled by the existing /api/tts endpoint.
+    STT turns patient audio into text, ConversationEngine owns questionnaire
+    state and safety, and TTS is handled by the existing /api/tts endpoint.
     """
 
     def __init__(self, engine: ConversationEngine, stt: LocalSTT, tts: LocalTTS) -> None:
@@ -55,8 +55,8 @@ class PrivateVoicePipeline:
 
     def status(self) -> dict[str, Any]:
         return {
-            "version": "v0.7",
-            "mode": "private_explainable_pipeline",
+            "version": "v0.9.0",
+            "mode": "private_questionnaire_pipeline",
             "production_target": True,
             "stages": {
                 "audio_input": {
@@ -64,7 +64,7 @@ class PrivateVoicePipeline:
                     "streaming_target": "WebRTC audio frames in a later runtime",
                 },
                 "vad_endpointing": {
-                    "engine": "browser/manual turn endpointing for v0.7",
+                    "engine": "browser/manual turn endpointing for v0.9.0",
                     "planned": "WebRTC VAD or Silero VAD",
                 },
                 "stt": self.stt.status(),
@@ -73,7 +73,7 @@ class PrivateVoicePipeline:
                     "clinical_authority": False,
                 },
                 "clinical_controller": {
-                    "engine": "ConversationEngine deterministic OA rulebook",
+                    "engine": "ConversationEngine deterministic DOCX-guided questionnaire rulebook",
                     "clinical_authority": True,
                 },
                 "verbalizer": {
@@ -83,8 +83,8 @@ class PrivateVoicePipeline:
                 "tts": self.tts.status(),
             },
             "research_side_notes": {
-                "covo": "archived half-duplex V2V experiment, not v0.7 production path",
-                "glm4voice": "future research candidate for native V2V interface, not v0.7 production path",
+                "covo": "archived half-duplex V2V experiment, not v0.9.0 production path",
+                "glm4voice": "future research candidate for native V2V interface, not v0.9.0 production path",
             },
         }
 

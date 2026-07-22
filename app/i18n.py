@@ -27,6 +27,37 @@ PROMPT_INTENTS = {
     "doctor_contacted": "collect whether a doctor or clinic was contacted",
     "emergency_visit": "collect whether emergency care or hospitalization occurred",
     "red_flags": "screen for urgent red-flag symptoms requiring escalation",
+    "survey_id": "collect the questionnaire participant ID",
+    "oa_diagnosis": "confirm physician-diagnosed osteoarthritis status",
+    "affected_joints": "collect affected joints using the questionnaire categories",
+    "symptom_duration": "collect duration of joint pain, stiffness, or swelling",
+    "last_flare_onset": "collect timing of the most recent pain flare",
+    "last_flare_duration": "collect duration of the most recent pain flare",
+    "last_flare_pain_score": "collect 0-10 pain score for the most recent flare",
+    "annual_flare_frequency": "collect past-year flare frequency bucket",
+    "usual_pain_response": "collect usual care-seeking or self-treatment behavior",
+    "oral_painkiller_used": "confirm oral analgesic use during flares",
+    "oral_painkiller_name": "collect oral analgesic name",
+    "oral_painkiller_no_reason": "collect reason for no oral analgesic use",
+    "adherence_to_doctor_order": "collect adherence to doctor's oral analgesic instructions",
+    "missed_doses": "ask whether oral analgesic doses are sometimes forgotten",
+    "stopped_after_improvement": "ask whether medication is stopped after symptom improvement",
+    "difficulty_taking_as_directed": "ask whether scheduled dosing feels difficult",
+    "missed_dose_reasons": "collect reasons for missed oral analgesic doses",
+    "adverse_reactions": "screen adverse reactions during oral analgesic use",
+    "adverse_reaction_symptoms": "collect adverse reaction symptom categories",
+    "pain_improvement_after_meds": "collect pain improvement after medication",
+    "function_improvement_after_meds": "collect daily activity improvement after medication",
+    "consolidation_medication_willingness": "collect willingness for 1-2 week consolidation medication",
+    "non_oral_treatments": "collect non-oral OA treatments",
+    "painkiller_channels": "collect pain-medicine acquisition channels",
+    "doctor_counseling": "collect hospital/community doctor medication counseling",
+    "retail_pharmacy_reasons": "collect retail pharmacy purchase reasons",
+    "retail_pharmacy_purchase_method": "collect retail pharmacy purchase method",
+    "pharmacy_guidance_contraindications": "collect pharmacy contraindication guidance frequency",
+    "pharmacy_guidance_dosage": "collect pharmacy dosage guidance frequency",
+    "pharmacy_guidance_avoid_multiple_painkillers": "collect pharmacy multiple-painkiller warning frequency",
+    "pharmacy_guidance_long_term_risks": "collect pharmacy long-term-risk guidance frequency",
 }
 
 
@@ -38,8 +69,8 @@ STRINGS = {
             "Before we start, I just need to make sure the call is clear."
         ),
         "natural_intro": (
-            "Hello, I'm calling from the research team for a short joint pain check-in. "
-            "To start, could you please tell me your name, mobile number, and age?"
+            "Hello, I'm calling from the research team for an osteoarthritis medication and treatment questionnaire. "
+            "This is a research prototype, not an emergency or treatment service. I will ask one question at a time."
         ),
         "hearing_check": "Can you hear me clearly?",
         "time_check": "Is now a good time to continue?",
@@ -102,6 +133,7 @@ STRINGS = {
         "no_urgent_escalation": "no urgent escalation",
         "urgent_action": "urgent medical care / emergency services / contact caregiver",
         "prototype_disclaimer": "Research prototype -- not approved for clinical use or unsupervised participant contact.",
+        "questionnaire_complete": "Thank you. The questionnaire is complete. I will prepare the structured report.",
     },
     "zh-CN": {
         "intro": (
@@ -109,7 +141,7 @@ STRINGS = {
             "这是研究原型，不是急救或治疗服务。"
             "开始前，我先确认一下通话是否清楚。"
         ),
-        "natural_intro": "您好，这里是北京大学研究团队，想做一个简短的关节疼痛随访。开始前，请您先说一下姓名、手机号和年龄。",
+        "natural_intro": "您好，这里是北京大学研究团队，想做一个骨关节炎用药和治疗情况问卷。这是研究原型，不是急救或治疗服务。我会像电话访谈一样，一个问题一个问题问。",
         "hearing_check": "您能听清楚我说话吗？",
         "time_check": "现在方便继续吗？",
         "permission_check": "如果您现在方便，我可以继续问几个随访问题吗？",
@@ -138,7 +170,7 @@ STRINGS = {
         "doctor_contacted": "有没有联系医生或门诊？",
         "emergency_visit": "有没有因此去急诊，或者住院？",
         "red_flags": "最后确认几个安全问题。有没有胸痛、喘不上气、黑便、吐血、晕倒、意识混乱，或者关节又红又热还发烧？",
-        "complete": "谢谢。今天先问到这里。我会整理给医生的报告。",
+        "complete": "谢谢。今天先问到这里。我会整理结构化报告。",
         "got_it_treatment": "明白了。您现在有没有用什么止痛办法？",
         "ok_treatment": "好的。您现在有没有用什么止痛办法？",
         "thanks_function": "谢谢。这个疼痛今天对您有什么影响？",
@@ -156,6 +188,7 @@ STRINGS = {
         "no_urgent_escalation": "未提示紧急升级",
         "urgent_action": "建议紧急就医 / 联系急救 / 联系家属或照护者",
         "prototype_disclaimer": "研究原型：尚未批准用于临床或无人监督的受试者联系。",
+        "questionnaire_complete": "感谢您的参与，问卷已经完成。我会整理结构化报告。",
     },
 }
 

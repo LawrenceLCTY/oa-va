@@ -12,6 +12,17 @@ from app.pain_scale import (
     functional_anchor_prompt,
     pain_severity,
 )
+from app.questionnaire import (
+    SOURCE_MATERIALS,
+    clarification_for_step,
+    completion_summary,
+    first_questionnaire_step,
+    is_questionnaire_step,
+    mark_not_applicable,
+    next_missing_step,
+    parse_questionnaire_answer,
+    prompt_for_step,
+)
 from app.report import generate_report
 from app.schemas import ConversationState
 from app.validators import (
@@ -50,17 +61,19 @@ class ConversationEngine:
 
     def start(self, language: str = "en") -> ConversationState:
         state = ConversationState(language=normalize_language(language))
+        state.questionnaire.source_materials = dict(SOURCE_MATERIALS)
         if _strict_readiness_enabled():
             state.step = "readiness_hearing"
             self._assistant(state, t(state.language, "intro"))
             self._assistant(state, t(state.language, "hearing_check"))
             return state
 
-        state.step = "identity"
+        state.step = first_questionnaire_step()
         state.readiness["hearing_clear"] = "assumed"
         state.readiness["suitable_time"] = "assumed"
         state.readiness["permission_to_continue"] = "assumed"
         self._assistant(state, t(state.language, "natural_intro"))
+        self._assistant(state, prompt_for_step(state.step, state.language))
         return state
 
     def handle_user_message(self, state: ConversationState, text: str) -> ConversationState:
@@ -106,6 +119,8 @@ class ConversationEngine:
             self._handle_readiness_time(state, user_text, understood)
         elif state.step == "permission":
             self._handle_permission(state, user_text, understood)
+        elif is_questionnaire_step(state.step):
+            self._handle_questionnaire_step(state, user_text, understood)
         elif state.step == "identity":
             self._handle_identity(state, user_text, understood)
         elif state.step == "respondent_source":
@@ -183,8 +198,55 @@ class ConversationEngine:
             state.report = generate_report(state)
             self._assistant(state, t(state.language, "permission_declined"))
             return
-        state.step = "identity"
-        self._assistant(state, t(state.language, "identity_prompt"))
+        state.step = first_questionnaire_step()
+        self._assistant(state, prompt_for_step(state.step, state.language))
+
+    def _handle_questionnaire_step(
+        self,
+        state: ConversationState,
+        text: str,
+        understood: UnderstandingResult | None,
+    ) -> None:
+        accepted, payload, reason = parse_questionnaire_answer(state.step, text)
+        if not accepted or payload is None:
+            self._clarify(state, text, clarification_for_step(state.step, state.language), reason)
+            return
+
+        answer = dict(payload)
+        answer["raw"] = _clean_short_answer(text, max_len=500)
+        state.questionnaire.answers[state.step] = answer
+        state.questionnaire.raw_answers[state.step] = _clean_short_answer(text, max_len=500)
+
+        if state.step == "last_flare_pain_score":
+            score = answer.get("value")
+            if isinstance(score, int):
+                state.pain.patient_words.append(f"last flare pain score: {text}")
+        elif state.step == "affected_joints":
+            values = answer.get("values")
+            if isinstance(values, list) and values:
+                state.pain.location = ", ".join(str(value) for value in values)
+                state.pain.patient_words.append(f"affected joints: {text}")
+        elif state.step == "adverse_reaction_symptoms":
+            values = answer.get("values")
+            if isinstance(values, list):
+                for value in values:
+                    label = str(value)
+                    if label not in state.safety.reported_symptoms:
+                        state.safety.reported_symptoms.append(label)
+        elif state.step == "adverse_reactions":
+            if answer.get("value") == "yes":
+                state.safety.side_effect_screening_result = "yes"
+        elif state.step == "oral_painkiller_name":
+            state.safety.medication_context = str(answer.get("value") or "")
+        elif state.step == "non_oral_treatments":
+            values = answer.get("values")
+            if isinstance(values, list):
+                previous = state.safety.medication_context or ""
+                state.safety.medication_context = _join_nonempty(
+                    [previous, "non-oral treatments: " + ", ".join(str(value) for value in values)]
+                )
+
+        self._advance_to_next_questionnaire_step(state, after=state.step)
 
     def _handle_identity(self, state: ConversationState, text: str, understood: UnderstandingResult | None) -> None:
         self._apply_understood_identity(state, understood)
@@ -445,10 +507,12 @@ class ConversationEngine:
         state.complete = True
         if not state.safety.red_flag_present:
             state.safety.action_advised = t(state.language, "no_urgent_escalation")
+        state.questionnaire.skipped = mark_not_applicable(state.questionnaire.answers)
+        state.questionnaire.completion = completion_summary(state.questionnaire.answers)
         state.report = generate_report(state)
         self._assistant(
             state,
-            t(state.language, "complete"),
+            t(state.language, "questionnaire_complete"),
         )
 
     def _merge_safety_detection(self, state: ConversationState, text: str, detected: dict[str, object]) -> None:
@@ -607,6 +671,17 @@ class ConversationEngine:
                 self._ask_for_step(state, step)
                 return
         self._complete(state)
+
+    def _advance_to_next_questionnaire_step(self, state: ConversationState, after: str | None = None) -> None:
+        next_step = next_missing_step(state.questionnaire.answers, after=after)
+        if next_step:
+            state.step = next_step
+            self._assistant(state, prompt_for_step(next_step, state.language))
+            return
+        state.questionnaire.skipped = mark_not_applicable(state.questionnaire.answers)
+        state.questionnaire.completion = completion_summary(state.questionnaire.answers)
+        state.step = "red_flags"
+        self._assistant(state, t(state.language, "red_flags"))
 
     def _step_missing(self, state: ConversationState, step: str) -> bool:
         if step == "identity":
@@ -940,6 +1015,10 @@ def _clean_short_answer(text: str, max_len: int = 240) -> str:
     if len(cleaned) <= max_len:
         return cleaned
     return cleaned[: max_len - 3].rstrip() + "..."
+
+
+def _join_nonempty(parts: list[str]) -> str:
+    return "; ".join(part.strip() for part in parts if part and part.strip())
 
 
 def _is_negative(text: str) -> bool:

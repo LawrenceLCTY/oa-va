@@ -75,6 +75,21 @@ def _major_functional_decline(state: ConversationState) -> bool:
 def summary_for_doctor(state: ConversationState) -> str:
     if state.language == "zh-CN":
         return summary_for_doctor_zh(state)
+    if state.questionnaire.answers:
+        survey_id = _questionnaire_value(state, "survey_id", "not provided")
+        diagnosis = _questionnaire_value(state, "oa_diagnosis", "unknown")
+        joints = _questionnaire_values(state, "affected_joints")
+        oral_used = _questionnaire_value(state, "oral_painkiller_used", "unknown")
+        medication = _questionnaire_value(state, "oral_painkiller_name", "not specified")
+        channels = _questionnaire_values(state, "painkiller_channels")
+        completion = state.questionnaire.completion or {}
+        return (
+            f"OA medication/treatment questionnaire completed for survey ID {survey_id}. "
+            f"Physician-diagnosed OA: {diagnosis}. Affected joints: {_list_value(joints)}. "
+            f"Oral pain medicine use: {oral_used}; medicine: {medication}. "
+            f"Pain-medicine channels: {_list_value(channels)}. "
+            f"Questionnaire completeness: {completion.get('complete_count', 0)}/{completion.get('required_count', 0)} required fields."
+        )
 
     name = state.identity.name or "The patient"
     pain_score = "unknown" if state.pain.score is None else f"{state.pain.score}/10 current"
@@ -104,6 +119,22 @@ def summary_for_doctor(state: ConversationState) -> str:
 
 
 def summary_for_doctor_zh(state: ConversationState) -> str:
+    if state.questionnaire.answers:
+        survey_id = _questionnaire_value(state, "survey_id", "未提供")
+        diagnosis = _questionnaire_value(state, "oa_diagnosis", "未知")
+        joints = _questionnaire_values(state, "affected_joints")
+        oral_used = _questionnaire_value(state, "oral_painkiller_used", "未知")
+        medication = _questionnaire_value(state, "oral_painkiller_name", "未说明")
+        channels = _questionnaire_values(state, "painkiller_channels")
+        completion = state.questionnaire.completion or {}
+        return (
+            f"已完成骨关节炎用药与治疗情况问卷，调查对象编号：{survey_id}。"
+            f"医生明确诊断骨关节炎：{diagnosis}。主要受累关节：{_list_value(joints, '未说明')}。"
+            f"疼痛发作时口服止痛药：{oral_used}；药品名称：{medication}。"
+            f"止痛药获取渠道：{_list_value(channels, '未说明')}。"
+            f"问卷完成度：{completion.get('complete_count', 0)}/{completion.get('required_count', 0)}个必填字段。"
+        )
+
     name = state.identity.name or "患者"
     pain_score = "未知" if state.pain.score is None else f"{state.pain.score}/10（当前）"
     average_score = "未知" if state.pain.average_24h_score is None else f"{state.pain.average_24h_score}/10（过去24小时平均）"
@@ -138,16 +169,23 @@ def generate_report_zh(state: ConversationState) -> str:
 def report_payload(state: ConversationState) -> dict[str, object]:
     red_flag_status = "yes" if state.safety.red_flag_present else "uncertain" if state.safety.red_flag_uncertain else "no"
     payload = {
-        "report_type": "oa_home_pain_check_in",
-        "schema_version": "0.7.2",
-        "assistant_version": "v0.7.2",
+        "report_type": "oa_medication_treatment_questionnaire",
+        "schema_version": "0.9.0",
+        "assistant_version": "v0.9.0",
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "session": {
             "session_id": state.session_id,
             "created_at": state.created_at,
             "language": state.language,
             "complete": state.complete,
-            "conversation_type": "Home monitoring OA pain check-in",
+            "conversation_type": "OA medication and treatment questionnaire voice interview",
+        },
+        "questionnaire_response": {
+            "source_materials": state.questionnaire.source_materials,
+            "answers": state.questionnaire.answers,
+            "raw_answers": state.questionnaire.raw_answers,
+            "skipped": state.questionnaire.skipped,
+            "completion": state.questionnaire.completion,
         },
         "patient_identity": {
             "name": state.identity.name,
@@ -201,6 +239,7 @@ def report_payload(state: ConversationState) -> dict[str, object]:
             "Voice self-report only.",
             "No physical exam performed.",
             "No diagnosis or medication adjustment made.",
+            "v0.9.0 follows the DOCX questionnaire content and sample phone transcript style; it is not a validated survey instrument implementation.",
         ],
         "medical_research_review": medical_research_review(state),
         "conversation_trace": conversation_trace(state),
@@ -214,9 +253,13 @@ def report_payload(state: ConversationState) -> dict[str, object]:
 
 def medical_research_review(state: ConversationState) -> dict[str, object]:
     missing = missing_required_fields(state)
+    questionnaire_completion = state.questionnaire.completion or {}
     return {
         "clinical_completeness": {
             "identity_complete": state.identity.is_complete,
+            "questionnaire_complete": bool(questionnaire_completion.get("complete")),
+            "questionnaire_required_count": questionnaire_completion.get("required_count", 0),
+            "questionnaire_complete_count": questionnaire_completion.get("complete_count", 0),
             "pain_scores_complete": state.pain.average_24h_score is not None and state.pain.score is not None,
             "pain_location_complete": bool(state.pain.location),
             "functional_anchor_complete": bool(state.pain.functional_impact),
@@ -293,6 +336,10 @@ def audit_metadata(state: ConversationState) -> dict[str, object]:
 
 
 def missing_required_fields(state: ConversationState) -> list[str]:
+    if state.questionnaire.answers:
+        completion = state.questionnaire.completion or {}
+        return [str(item) for item in completion.get("missing_required_fields", [])]
+
     missing = []
     if not state.identity.is_complete:
         missing.append("identity")
@@ -313,6 +360,27 @@ def missing_required_fields(state: ConversationState) -> list[str]:
     if not state.complete and not state.safety.red_flag_present:
         missing.append("completion_or_escalation")
     return missing
+
+
+def _questionnaire_value(state: ConversationState, key: str, fallback: str) -> str:
+    answer = state.questionnaire.answers.get(key)
+    if isinstance(answer, dict):
+        value = answer.get("value")
+        if value is not None:
+            return str(value)
+    return fallback
+
+
+def _questionnaire_values(state: ConversationState, key: str) -> list[str]:
+    answer = state.questionnaire.answers.get(key)
+    if isinstance(answer, dict):
+        values = answer.get("values")
+        if isinstance(values, list):
+            return [str(value) for value in values]
+        value = answer.get("value")
+        if value is not None:
+            return [str(value)]
+    return []
 
 
 def quality_metrics(state: ConversationState) -> dict[str, object]:
