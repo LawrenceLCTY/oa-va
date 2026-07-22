@@ -1,0 +1,1474 @@
+{
+  "report_type": "oa_home_pain_check_in",
+  "schema_version": "0.7.2",
+  "assistant_version": "v0.7.2",
+  "generated_at": "2026-07-22T19:03:07",
+  "session": {
+    "session_id": "aca22e42-5ae0-4d70-9497-f5f39979ad18",
+    "created_at": "2026-07-22T18:59:18",
+    "language": "zh-CN",
+    "complete": true,
+    "conversation_type": "Home monitoring OA pain check-in"
+  },
+  "patient_identity": {
+    "name": "Zh Neutral Speech Withitn",
+    "mobile_number": "01234564789",
+    "age": 20,
+    "status": "complete"
+  },
+  "readiness": {
+    "hearing_clear": "assumed",
+    "suitable_time": "assumed",
+    "permission_to_continue": "assumed",
+    "respondent_source": "unknown"
+  },
+  "pain_assessment": {
+    "scale": "0-10 VAS/NRS with optional binary scenario anchoring",
+    "average_24h_score": 0,
+    "average_24h_severity": "none",
+    "average_24h_score_confirmed": true,
+    "average_24h_vas_trace": [
+      {
+        "low": 0,
+        "high": 10,
+        "midpoint": 5,
+        "choice": "lower",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "能想象到的最严重疼痛"
+      },
+      {
+        "low": 0,
+        "high": 5,
+        "midpoint": 2,
+        "choice": "lower",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "中等疼痛，会影响一部分日常事情"
+      },
+      {
+        "low": 0,
+        "high": 2,
+        "midpoint": 1,
+        "choice": "lower",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "能感觉到疼，但基本不影响活动"
+      },
+      {
+        "low": 0,
+        "high": 1,
+        "midpoint": 0,
+        "choice": "lower",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "很轻微的不适，基本可以忽略"
+      }
+    ],
+    "current_score": 0,
+    "current_severity": "none",
+    "current_score_confirmed": true,
+    "current_vas_trace": [
+      {
+        "low": 0,
+        "high": 10,
+        "midpoint": 5,
+        "choice": "lower",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "能想象到的最严重疼痛"
+      },
+      {
+        "low": 0,
+        "high": 5,
+        "midpoint": 2,
+        "choice": "lower",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "中等疼痛，会影响一部分日常事情"
+      },
+      {
+        "low": 0,
+        "high": 2,
+        "midpoint": 1,
+        "choice": "lower",
+        "lower_anchor": "没有关节疼痛",
+        "higher_anchor": "能感觉到疼，但基本不影响活动"
+      }
+    ],
+    "location": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。",
+    "functional_impact": "没有！",
+    "usual_comparison": "better",
+    "patient_words": [
+      "24h average pain (binary_anchor_calibrated): 0; final answer: <|zh|><|NEUTRAL|><|Speech|><|withitn|>。",
+      "current pain (direct_numeric_override): 0; final answer: 0",
+      "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。",
+      "没有！",
+      "轻了"
+    ]
+  },
+  "safety_assessment": {
+    "side_effect_screening_result": "no",
+    "reported_symptoms": [],
+    "symptom_start_time": null,
+    "symptom_status": "unknown",
+    "symptom_severity": "unknown",
+    "medication_or_treatment_context": "未报告",
+    "medication_reduced_paused_or_stopped": "unknown",
+    "doctor_contacted": "unknown",
+    "emergency_visit_or_hospitalization": "unknown",
+    "non_urgent_concerns": [],
+    "researcher_alert_required": false,
+    "red_flag_status": "no",
+    "red_flag_present": false,
+    "red_flag_uncertain": false,
+    "red_flag_symptoms": [],
+    "action_advised": "未提示紧急升级"
+  },
+  "doctor_summary": "Zh Neutral Speech Withitn完成了一次居家骨关节炎疼痛随访，报告0/10（过去24小时平均），0/10（当前），部位为<|zh|><|NEUTRAL|><|Speech|><|withitn|>。。功能影响：没有！。与平时相比：较平时减轻。本次随访未报告紧急危险信号。",
+  "suggested_follow_up_priority": "常规：未报告紧急危险信号",
+  "limitations": [
+    "Research prototype; not approved for clinical use.",
+    "Voice self-report only.",
+    "No physical exam performed.",
+    "No diagnosis or medication adjustment made."
+  ],
+  "medical_research_review": {
+    "clinical_completeness": {
+      "identity_complete": true,
+      "pain_scores_complete": true,
+      "pain_location_complete": true,
+      "functional_anchor_complete": true,
+      "usual_comparison_complete": true,
+      "treatment_context_complete": true,
+      "side_effect_screen_complete": true,
+      "red_flag_screen_complete": true
+    },
+    "clinical_concerns": {
+      "urgent_red_flag": false,
+      "high_pain": false,
+      "researcher_alert_required": false,
+      "uncertain_red_flag": false,
+      "missing_or_suspect_fields": []
+    },
+    "research_quality": {
+      "usable_for_study": true,
+      "requires_callback": false,
+      "review_status": "unreviewed"
+    }
+  },
+  "conversation_trace": {
+    "turn_count": 53,
+    "turns": [
+      {
+        "turn_index": 1,
+        "role": "assistant",
+        "text": "您好，这里是北京大学研究团队，想做一个简短的关节疼痛随访。开始前，请您先说一下姓名、手机号和年龄。"
+      },
+      {
+        "turn_index": 2,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 3,
+        "role": "assistant",
+        "text": "谢谢。还需要确认一下您的手机号、年龄。"
+      },
+      {
+        "turn_index": 4,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 5,
+        "role": "assistant",
+        "text": "谢谢。还需要确认一下您的手机号、年龄。"
+      },
+      {
+        "turn_index": 6,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 7,
+        "role": "assistant",
+        "text": "谢谢。还需要确认一下您的手机号、年龄。"
+      },
+      {
+        "turn_index": 8,
+        "role": "user",
+        "text": "01234564789"
+      },
+      {
+        "turn_index": 9,
+        "role": "assistant",
+        "text": "谢谢。还需要确认一下您的年龄。"
+      },
+      {
+        "turn_index": 10,
+        "role": "user",
+        "text": "20"
+      },
+      {
+        "turn_index": 11,
+        "role": "assistant",
+        "text": "为了记录准确，我想确认一下：现在是您本人自己回答，家属在旁边帮忙，还是由家属代您回答？"
+      },
+      {
+        "turn_index": 12,
+        "role": "user",
+        "text": "<|zh|><|EMO_UNKNOWN|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 13,
+        "role": "assistant",
+        "text": "回想过去一天，您的关节疼痛平均大概是0到10分里的几分？ 为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 5分以下：没有关节疼痛，还是 6分以上：能想象到的最严重疼痛？"
+      },
+      {
+        "turn_index": 14,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 15,
+        "role": "assistant",
+        "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 2分以下：没有关节疼痛，还是 3分以上：中等疼痛，会影响一部分日常事情？"
+      },
+      {
+        "turn_index": 16,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 17,
+        "role": "assistant",
+        "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 1分以下：没有关节疼痛，还是 2分以上：能感觉到疼，但基本不影响活动？"
+      },
+      {
+        "turn_index": 18,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>我。"
+      },
+      {
+        "turn_index": 19,
+        "role": "assistant",
+        "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 0分以下：没有关节疼痛，还是 1分以上：很轻微的不适，基本可以忽略？"
+      },
+      {
+        "turn_index": 20,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 21,
+        "role": "assistant",
+        "text": "我会记录为0分，接近：没有关节疼痛。"
+      },
+      {
+        "turn_index": 22,
+        "role": "assistant",
+        "text": "那现在这一刻，您会给这个疼痛打几分？0到10分。 为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 5分以下：没有关节疼痛，还是 6分以上：能想象到的最严重疼痛？"
+      },
+      {
+        "turn_index": 23,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 24,
+        "role": "assistant",
+        "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 2分以下：没有关节疼痛，还是 3分以上：中等疼痛，会影响一部分日常事情？"
+      },
+      {
+        "turn_index": 25,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 26,
+        "role": "assistant",
+        "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 1分以下：没有关节疼痛，还是 2分以上：能感觉到疼，但基本不影响活动？"
+      },
+      {
+        "turn_index": 27,
+        "role": "user",
+        "text": "<|zh|><|EMO_UNKNOWN|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 28,
+        "role": "assistant",
+        "text": "为了记录0到10分，请告诉我更接近前一个较轻的描述，还是后一个较重的描述。"
+      },
+      {
+        "turn_index": 29,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 30,
+        "role": "assistant",
+        "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 0分以下：没有关节疼痛，还是 1分以上：很轻微的不适，基本可以忽略？"
+      },
+      {
+        "turn_index": 31,
+        "role": "user",
+        "text": "0"
+      },
+      {
+        "turn_index": 32,
+        "role": "assistant",
+        "text": "今天主要是哪个部位疼？"
+      },
+      {
+        "turn_index": 33,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 34,
+        "role": "assistant",
+        "text": "今天影响您做什么事？比如走路、上下楼、睡觉，或者用手。"
+      },
+      {
+        "turn_index": 35,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>我。"
+      },
+      {
+        "turn_index": 36,
+        "role": "assistant",
+        "text": "请说一下它怎么影响走路、睡觉、用手，或者日常活动。"
+      },
+      {
+        "turn_index": 37,
+        "role": "user",
+        "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+      },
+      {
+        "turn_index": 38,
+        "role": "assistant",
+        "text": "请说一下它怎么影响走路、睡觉、用手，或者日常活动。"
+      },
+      {
+        "turn_index": 39,
+        "role": "user",
+        "text": "没有！"
+      },
+      {
+        "turn_index": 40,
+        "role": "assistant",
+        "text": "和您平时相比，这次是轻一些、重一些，还是差不多？"
+      },
+      {
+        "turn_index": 41,
+        "role": "user",
+        "text": "没有"
+      },
+      {
+        "turn_index": 42,
+        "role": "assistant",
+        "text": "和您平时相比，是轻了、重了，还是差不多？"
+      },
+      {
+        "turn_index": 43,
+        "role": "user",
+        "text": "轻"
+      },
+      {
+        "turn_index": 44,
+        "role": "assistant",
+        "text": "和您平时相比，是轻了、重了，还是差不多？"
+      },
+      {
+        "turn_index": 45,
+        "role": "user",
+        "text": "清了"
+      },
+      {
+        "turn_index": 46,
+        "role": "assistant",
+        "text": "和您平时相比，是轻了、重了，还是差不多？"
+      },
+      {
+        "turn_index": 47,
+        "role": "user",
+        "text": "轻了"
+      },
+      {
+        "turn_index": 48,
+        "role": "assistant",
+        "text": "您现在有没有用什么止痛办法？比如药片、药膏、针剂，或者康复治疗。"
+      },
+      {
+        "turn_index": 49,
+        "role": "user",
+        "text": "没有"
+      },
+      {
+        "turn_index": 50,
+        "role": "assistant",
+        "text": "最近有没有不舒服或新的症状？比如胃不舒服、肿胀、皮疹、头晕，或者喘不上气。"
+      },
+      {
+        "turn_index": 51,
+        "role": "user",
+        "text": "没"
+      },
+      {
+        "turn_index": 52,
+        "role": "assistant",
+        "text": "最后确认几个安全问题。有没有胸痛、喘不上气、黑便、吐血、晕倒、意识混乱，或者关节又红又热还发烧？"
+      },
+      {
+        "turn_index": 53,
+        "role": "user",
+        "text": "没"
+      }
+    ],
+    "model_events": [
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 11786,
+          "clinical_engine_ms": 15,
+          "total_ms": 11802
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "identity",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 259,
+          "clinical_engine_ms": 1,
+          "total_ms": 261
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "identity",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 179,
+          "clinical_engine_ms": 1,
+          "total_ms": 180
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "identity",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 181,
+          "clinical_engine_ms": 1,
+          "total_ms": 183
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "respondent_source",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 208,
+          "clinical_engine_ms": 3,
+          "total_ms": 211
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "average_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 155,
+          "clinical_engine_ms": 1,
+          "total_ms": 156
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "average_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 157,
+          "clinical_engine_ms": 1,
+          "total_ms": 158
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "average_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 144,
+          "clinical_engine_ms": 2,
+          "total_ms": 146
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "average_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 149,
+          "clinical_engine_ms": 1,
+          "total_ms": 150
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "current_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 172,
+          "clinical_engine_ms": 1,
+          "total_ms": 173
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "current_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 165,
+          "clinical_engine_ms": 1,
+          "total_ms": 166
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "current_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 249,
+          "clinical_engine_ms": 1,
+          "total_ms": 250
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "current_pain_score",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 161,
+          "clinical_engine_ms": 1,
+          "total_ms": 163
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "pain_location",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 145,
+          "clinical_engine_ms": 2,
+          "total_ms": 148
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "functional_impact",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      },
+      {
+        "component": "private_voice_pipeline",
+        "transcript_source": "local_stt",
+        "filename": "speech.webm",
+        "language": "zh-CN",
+        "timings": {
+          "stt_ms": 168,
+          "clinical_engine_ms": 1,
+          "total_ms": 170
+        },
+        "errors": [],
+        "ai_traces": [
+          {
+            "component": "local_clinical_ai",
+            "operation": "understand",
+            "enabled": true,
+            "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+            "url": "http://127.0.0.1:8001/v1/chat/completions",
+            "step": "functional_impact",
+            "language": "zh-CN",
+            "used_model": false,
+            "fallback": "rule_only_after_model_failure"
+          }
+        ]
+      }
+    ],
+    "quality_metrics": {
+      "turn_count": 53,
+      "clarification_count": 20,
+      "fallback_transcript_count": 0,
+      "model_extraction_count": 0,
+      "model_rewrite_count": 0,
+      "tts_failure_count": 0,
+      "avg_turn_latency_ms": 954,
+      "missing_required_fields": []
+    }
+  },
+  "ai_iteration": {
+    "review_status": "unreviewed",
+    "approved_for_training": false,
+    "failure_tags": [
+      "latency_high",
+      "model_not_used",
+      "patient_confused",
+      "rulebook_overclarified"
+    ],
+    "training_candidates": [
+      {
+        "type": "response_preference",
+        "requires_human_review": true,
+        "reason": "Conversation required repeated clarification or showed patient confusion.",
+        "context": [
+          {
+            "role": "assistant",
+            "text": "和您平时相比，是轻了、重了，还是差不多？"
+          },
+          {
+            "role": "user",
+            "text": "轻了"
+          },
+          {
+            "role": "assistant",
+            "text": "您现在有没有用什么止痛办法？比如药片、药膏、针剂，或者康复治疗。"
+          },
+          {
+            "role": "user",
+            "text": "没有"
+          },
+          {
+            "role": "assistant",
+            "text": "最近有没有不舒服或新的症状？比如胃不舒服、肿胀、皮疹、头晕，或者喘不上气。"
+          },
+          {
+            "role": "user",
+            "text": "没"
+          },
+          {
+            "role": "assistant",
+            "text": "最后确认几个安全问题。有没有胸痛、喘不上气、黑便、吐血、晕倒、意识混乱，或者关节又红又热还发烧？"
+          },
+          {
+            "role": "user",
+            "text": "没"
+          }
+        ],
+        "preferred_behavior": "Acknowledge the patient's confusion, ask the same clinical item in simpler words, and preserve required clinical meaning."
+      },
+      {
+        "type": "system_configuration",
+        "requires_human_review": false,
+        "reason": "No usable model trace was observed.",
+        "preferred_behavior": "Verify local Qwen service, ENABLE_LOCAL_UNDERSTANDING, and model trace logging."
+      }
+    ],
+    "privacy": {
+      "raw_audio_included": false,
+      "requires_human_review_before_training": true,
+      "contains_phi": true
+    }
+  },
+  "audit_metadata": {
+    "review_status": "unreviewed",
+    "raw_audio_retention": "not_stored_by_default",
+    "model_names_observed": [
+      "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B"
+    ],
+    "model_event_count": 15,
+    "report_single_file_policy": true
+  },
+  "model_events": [
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 11786,
+        "clinical_engine_ms": 15,
+        "total_ms": 11802
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "identity",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 259,
+        "clinical_engine_ms": 1,
+        "total_ms": 261
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "identity",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 179,
+        "clinical_engine_ms": 1,
+        "total_ms": 180
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "identity",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 181,
+        "clinical_engine_ms": 1,
+        "total_ms": 183
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "respondent_source",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 208,
+        "clinical_engine_ms": 3,
+        "total_ms": 211
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "average_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 155,
+        "clinical_engine_ms": 1,
+        "total_ms": 156
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "average_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 157,
+        "clinical_engine_ms": 1,
+        "total_ms": 158
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "average_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 144,
+        "clinical_engine_ms": 2,
+        "total_ms": 146
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "average_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 149,
+        "clinical_engine_ms": 1,
+        "total_ms": 150
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "current_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 172,
+        "clinical_engine_ms": 1,
+        "total_ms": 173
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "current_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 165,
+        "clinical_engine_ms": 1,
+        "total_ms": 166
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "current_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 249,
+        "clinical_engine_ms": 1,
+        "total_ms": 250
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "current_pain_score",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 161,
+        "clinical_engine_ms": 1,
+        "total_ms": 163
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "pain_location",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 145,
+        "clinical_engine_ms": 2,
+        "total_ms": 148
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "functional_impact",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    },
+    {
+      "component": "private_voice_pipeline",
+      "transcript_source": "local_stt",
+      "filename": "speech.webm",
+      "language": "zh-CN",
+      "timings": {
+        "stt_ms": 168,
+        "clinical_engine_ms": 1,
+        "total_ms": 170
+      },
+      "errors": [],
+      "ai_traces": [
+        {
+          "component": "local_clinical_ai",
+          "operation": "understand",
+          "enabled": true,
+          "model": "/hdd-storage/lawrencelcty/huggingface/models/Qwen/Qwen3-8B",
+          "url": "http://127.0.0.1:8001/v1/chat/completions",
+          "step": "functional_impact",
+          "language": "zh-CN",
+          "used_model": false,
+          "fallback": "rule_only_after_model_failure"
+        }
+      ]
+    }
+  ],
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "您好，这里是北京大学研究团队，想做一个简短的关节疼痛随访。开始前，请您先说一下姓名、手机号和年龄。"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "谢谢。还需要确认一下您的手机号、年龄。"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "谢谢。还需要确认一下您的手机号、年龄。"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "谢谢。还需要确认一下您的手机号、年龄。"
+    },
+    {
+      "role": "user",
+      "text": "01234564789"
+    },
+    {
+      "role": "assistant",
+      "text": "谢谢。还需要确认一下您的年龄。"
+    },
+    {
+      "role": "user",
+      "text": "20"
+    },
+    {
+      "role": "assistant",
+      "text": "为了记录准确，我想确认一下：现在是您本人自己回答，家属在旁边帮忙，还是由家属代您回答？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|EMO_UNKNOWN|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "回想过去一天，您的关节疼痛平均大概是0到10分里的几分？ 为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 5分以下：没有关节疼痛，还是 6分以上：能想象到的最严重疼痛？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 2分以下：没有关节疼痛，还是 3分以上：中等疼痛，会影响一部分日常事情？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 1分以下：没有关节疼痛，还是 2分以上：能感觉到疼，但基本不影响活动？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>我。"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录过去一天的平均疼痛，请比较两个描述。它更接近 0分以下：没有关节疼痛，还是 1分以上：很轻微的不适，基本可以忽略？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "我会记录为0分，接近：没有关节疼痛。"
+    },
+    {
+      "role": "assistant",
+      "text": "那现在这一刻，您会给这个疼痛打几分？0到10分。 为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 5分以下：没有关节疼痛，还是 6分以上：能想象到的最严重疼痛？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 2分以下：没有关节疼痛，还是 3分以上：中等疼痛，会影响一部分日常事情？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 1分以下：没有关节疼痛，还是 2分以上：能感觉到疼，但基本不影响活动？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|EMO_UNKNOWN|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "为了记录0到10分，请告诉我更接近前一个较轻的描述，还是后一个较重的描述。"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "为了更准确记录现在这一刻的疼痛，请比较两个描述。它更接近 0分以下：没有关节疼痛，还是 1分以上：很轻微的不适，基本可以忽略？"
+    },
+    {
+      "role": "user",
+      "text": "0"
+    },
+    {
+      "role": "assistant",
+      "text": "今天主要是哪个部位疼？"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "今天影响您做什么事？比如走路、上下楼、睡觉，或者用手。"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>我。"
+    },
+    {
+      "role": "assistant",
+      "text": "请说一下它怎么影响走路、睡觉、用手，或者日常活动。"
+    },
+    {
+      "role": "user",
+      "text": "<|zh|><|NEUTRAL|><|Speech|><|withitn|>。"
+    },
+    {
+      "role": "assistant",
+      "text": "请说一下它怎么影响走路、睡觉、用手，或者日常活动。"
+    },
+    {
+      "role": "user",
+      "text": "没有！"
+    },
+    {
+      "role": "assistant",
+      "text": "和您平时相比，这次是轻一些、重一些，还是差不多？"
+    },
+    {
+      "role": "user",
+      "text": "没有"
+    },
+    {
+      "role": "assistant",
+      "text": "和您平时相比，是轻了、重了，还是差不多？"
+    },
+    {
+      "role": "user",
+      "text": "轻"
+    },
+    {
+      "role": "assistant",
+      "text": "和您平时相比，是轻了、重了，还是差不多？"
+    },
+    {
+      "role": "user",
+      "text": "清了"
+    },
+    {
+      "role": "assistant",
+      "text": "和您平时相比，是轻了、重了，还是差不多？"
+    },
+    {
+      "role": "user",
+      "text": "轻了"
+    },
+    {
+      "role": "assistant",
+      "text": "您现在有没有用什么止痛办法？比如药片、药膏、针剂，或者康复治疗。"
+    },
+    {
+      "role": "user",
+      "text": "没有"
+    },
+    {
+      "role": "assistant",
+      "text": "最近有没有不舒服或新的症状？比如胃不舒服、肿胀、皮疹、头晕，或者喘不上气。"
+    },
+    {
+      "role": "user",
+      "text": "没"
+    },
+    {
+      "role": "assistant",
+      "text": "最后确认几个安全问题。有没有胸痛、喘不上气、黑便、吐血、晕倒、意识混乱，或者关节又红又热还发烧？"
+    },
+    {
+      "role": "user",
+      "text": "没"
+    }
+  ]
+}
