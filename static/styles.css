@@ -544,12 +544,16 @@ button:disabled {
 
 .transcript {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 13px;
   min-height: 220px;
-  overflow: auto;
+  max-height: clamp(260px, 42vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px;
   scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
 
 .message {

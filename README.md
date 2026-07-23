@@ -2,7 +2,7 @@
 
 Local prototype for an osteoarthritis medication and treatment questionnaire voice assistant.
 
-v0.9.0 uses the local DOCX questionnaire, sample voice recording, and transcript in `data/` as the active protocol guidance. The DOCX defines the required fields; the sample conversation defines the target phone-interview style.
+v0.9.5 uses the local DOCX questionnaire, sample voice recording, and transcript in `data/` as the active protocol guidance. The DOCX defines the required fields; the sample conversation defines the target phone-interview style. v0.9.5 makes local Qwen the first semantic interpreter for questionnaire turns, while deterministic code validates schema, branching, safety, and reporting.
 
 ## Run
 
@@ -16,12 +16,12 @@ Open:
 http://127.0.0.1:8000
 ```
 
-The browser UI is voice-first. The current v0.9.0 flow collects the structured OA questionnaire one question at a time:
+The browser UI is voice-first. The current v0.9.5 flow collects the structured OA questionnaire one question at a time:
 
 ```text
 browser recorded patient turn
   -> local STT through SenseVoiceSmall when available
-  -> local Qwen-compatible structured extraction when available
+  -> local Qwen-compatible semantic turn interpretation when available
   -> deterministic DOCX-guided questionnaire engine
   -> local Qwen3-TTS or browser speech output
 ```
@@ -35,11 +35,55 @@ v0.2 adds a language selector for:
 
 Chinese mode uses an independent Chinese UI, Chinese call script, Chinese speech recognition language setting, Chinese text-to-speech voice preference, and Chinese-aware validation/red-flag rules.
 
-Final reports are generated as formatted JSON with stable English keys. The primary v0.9.0 section is `questionnaire_response`, which stores normalized answers, raw participant wording, skipped conditional fields, completion status, and source-material metadata.
+Final reports are generated as formatted JSON with stable English keys. The primary v0.9.5 section is `questionnaire_response`, which stores normalized answers, raw participant wording, skipped conditional fields, completion status, source-material metadata, and per-answer interpretation metadata for accepted fuzzy answers.
+
+## v0.9.5 Semantic Turn Interpreter
+
+v0.9.5 changes the questionnaire architecture so human intent is interpreted by the local Qwen-compatible model before the rulebook sees an answer:
+
+- Qwen receives the current step key, exact question, allowed schema/options, branch context, recent transcript, and raw human response.
+- Qwen returns a JSON turn classification: answer, correction, complaint, off-topic, safety, or unclear.
+- Deterministic code validates the normalized value against the step schema before advancing state.
+- Invalid, low-confidence, wrong-question, complaint, correction, and unclear turns ask for clarification without falling through to keyword parsing.
+- If Qwen is unavailable, the existing deterministic parser remains a safe fallback for simple local/dev runs.
+- Reports retain raw wording plus model confidence, evidence, turn type, and validator metadata for accepted AI-interpreted answers.
+
+The UI call layout was also restored to the pre-v0.9 visual structure after the v0.9.4 dock experiment reduced transcript visibility. Auto-scroll remains contained to the transcript panel.
+
+## v0.9.4 Sticky Live Voice Dock
+
+v0.9.4 keeps the v0.9.3 questionnaire semantics and changes the live-call surface so conversation history does not push active controls away:
+
+- Transcript history auto-scrolls inside its own panel.
+- The live voice dock remains visible with the current prompt, listening/speaking/processing state, mic meter, timer, and start/stop controls.
+- Desktop uses independently scrolling assistant and handoff panels.
+- Mobile keeps the dock at the bottom of the call surface while the transcript scrolls above it.
+
+## v0.9.3 Fuzzy Interpretation Update
+
+v0.9.3 keeps the v0.9.0 DOCX/audio questionnaire as the active protocol, the v0.9.2 STT reliability baseline, and adds auditable fuzzy Chinese interpretation:
+
+- Accepted answers now include `interpretation` metadata with confidence, strategy, fuzzy, needs-review, and evidence fields.
+- Fuzzy-but-logical answers such as doctor-described OA diagnosis, doctor-prescribed medicine channels, and effect descriptions like “吃一两颗就不疼了” can be accepted without repeating the same question.
+- Wrong-bucket answers still clarify: benefit-only answers do not answer adverse reactions, and cost-conditional willingness does not become a clean willingness value.
+- Report quality metrics count fuzzy, low-confidence, and review-needed interpretations so formal completion does not hide semantic risk.
+- Smoke tests include v0.9.3 fuzzy semantic regressions plus the v0.9.2 STT artifact and replay checks.
+
+## v0.9.2 Questionnaire Reliability Update
+
+v0.9.2 keeps the v0.9.0 DOCX/audio questionnaire as the active protocol and adds reliability fixes for local voice runs:
+
+- SenseVoice metadata tags such as `<|zh|><|NEUTRAL|><|Speech|><|withitn|>` are stripped and rejected when no patient content remains.
+- Rejected STT turns ask the participant to repeat without advancing the questionnaire state.
+- Browser transcript fallback is preferred when local STT output is unusable.
+- Report and pipeline metadata are centralized through `app/version.py`.
+- The default spoken flow starts from OA diagnosis to match the reference call; set `ASK_SURVEY_ID=1` to restore the survey-ID-first workflow.
+- `last_flare_pain_score` accepts narrow qualitative anchors such as mild/no sleep impact and maps them to an auditable 0-10 value.
+- Smoke tests include STT artifact rejection and a reference-style transcript replay.
 
 ## v0.9.0 DOCX/Audio Questionnaire Flow
 
-v0.9.0 replaces the active short pain-check-in with the questionnaire defined by:
+v0.9.0 replaced the active short pain-check-in with the questionnaire defined by:
 
 - `data/OA问卷-房山-简化-v2.docx`
 - `data/新录音 4.m4a`
@@ -298,7 +342,7 @@ export HTTP_PROXY=http://crs.datummed.com:8080
 export HTTPS_PROXY=http://crs.datummed.com:8080
 
 huggingface-cli download FunAudioLLM/SenseVoiceSmall \
-  --local-dir /home/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall
+  --local-dir /hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall
 ```
 
 If `huggingface-cli download` is blocked, use ModelScope:
@@ -309,7 +353,7 @@ from modelscope import snapshot_download
 
 snapshot_download(
     "iic/SenseVoiceSmall",
-    local_dir="/home/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall",
+    local_dir="/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall",
 )
 PY
 ```
@@ -317,8 +361,10 @@ PY
 Override the model path or device:
 
 ```bash
-export SENSEVOICE_MODEL="/path/to/SenseVoiceSmall"
+export SENSEVOICE_MODEL="/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall"
 export SENSEVOICE_DEVICE="cuda"
+# Keep this off for the local FunASR-format model unless you have a model.py remote-code checkout.
+export SENSEVOICE_TRUST_REMOTE_CODE=0
 ```
 
 Quick local check:
@@ -328,8 +374,8 @@ python3 - <<'PY'
 from funasr import AutoModel
 
 model = AutoModel(
-    model="/home/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall",
-    trust_remote_code=True,
+    model="/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall",
+    trust_remote_code=False,
     device="cuda",
     disable_update=True,
 )

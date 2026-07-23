@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
 
 
-DEFAULT_SENSEVOICE_MODEL = "/home/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall"
+DEFAULT_SENSEVOICE_MODEL = "/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/SenseVoiceSmall"
 
 
 class LocalSTT:
@@ -15,6 +16,7 @@ class LocalSTT:
     def __init__(self) -> None:
         self.model_path = os.getenv("SENSEVOICE_MODEL", DEFAULT_SENSEVOICE_MODEL)
         self.device = os.getenv("SENSEVOICE_DEVICE", "cuda")
+        self.trust_remote_code = _env_enabled("SENSEVOICE_TRUST_REMOTE_CODE")
         self.prefer_local = _env_enabled("PREFER_LOCAL_STT")
         self._model: Any | None = None
 
@@ -27,6 +29,7 @@ class LocalSTT:
             "model_path": self.model_path,
             "model_path_found": model_found,
             "device": self.device,
+            "trust_remote_code": self.trust_remote_code,
             "loaded": self._model is not None,
         }
 
@@ -53,7 +56,11 @@ class LocalSTT:
                 merge_vad=True,
                 merge_length_s=15,
             )
-            return _extract_text(result), None
+            raw = _extract_text(result)
+            cleaned = sanitize_transcript(raw)
+            if not cleaned:
+                return None, "unusable transcript after STT sanitization"
+            return cleaned, None
         except Exception as exc:
             return None, f"{type(exc).__name__}: {exc}"
 
@@ -70,7 +77,7 @@ class LocalSTT:
             ) from exc
         self._model = AutoModel(
             model=self.model_path,
-            trust_remote_code=True,
+            trust_remote_code=self.trust_remote_code,
             device=self.device,
             disable_update=True,
         )
@@ -90,6 +97,23 @@ def _extract_text(result: object) -> str:
     if isinstance(result, dict):
         return str(result.get("text", "")).strip()
     return str(result).strip()
+
+
+def sanitize_transcript(text: str | None) -> str:
+    """Remove known ASR metadata artifacts and reject content-free output."""
+    if not text:
+        return ""
+    cleaned = str(text)
+    cleaned = re.sub(r"<\|[^>]*?\|>", " ", cleaned)
+    cleaned = cleaned.replace("withitn", " ").replace("within", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+([。！？!?，,；;：:])", r"\1", cleaned)
+    cleaned = cleaned.strip(" \t\r\n。！？!?，,；;：:")
+    if not cleaned:
+        return ""
+    if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", cleaned):
+        return ""
+    return cleaned
 
 
 def _env_enabled(name: str) -> bool:

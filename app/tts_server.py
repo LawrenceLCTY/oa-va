@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.conversation import ConversationEngine
+from app.questionnaire import QUESTIONNAIRE_STEP_KEYS, clarification_for_step, prompt_for_step
 from app.tts import LocalTTS
 
 
@@ -28,8 +29,17 @@ ENGINE = ConversationEngine()
 def warmup_lines() -> list[tuple[str, str]]:
     lines = list(WARMUP_LINES.items())
     for language in ("zh-CN", "en"):
-        _state, assistant_messages = ENGINE.start(language)
-        lines.extend((language, message) for message in assistant_messages)
+        state = ENGINE.start(language)
+        assistant_messages = [
+            item.get("text", "")
+            for item in state.transcript
+            if item.get("role") == "assistant"
+        ]
+        lines.extend((language, message) for message in assistant_messages if message)
+        if _warmup_all_questionnaire_enabled():
+            for step in QUESTIONNAIRE_STEP_KEYS:
+                lines.append((language, prompt_for_step(step, language)))
+                lines.append((language, clarification_for_step(step, language)))
     seen = set()
     deduped = []
     for language, text in lines:
@@ -119,6 +129,10 @@ class TTSRequestHandler(BaseHTTPRequestHandler):
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
+
+
+def _warmup_all_questionnaire_enabled() -> bool:
+    return os.getenv("TTS_WARMUP_ALL_QUESTIONNAIRE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def warmup() -> list[dict[str, object]]:

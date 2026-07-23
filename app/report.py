@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 
 from app.schemas import ConversationState
+from app.version import APP_VERSION, REPORT_TYPE, SCHEMA_VERSION
 
 
 def _line_value(value: object | None, fallback: str = "not provided") -> str:
@@ -169,9 +170,9 @@ def generate_report_zh(state: ConversationState) -> str:
 def report_payload(state: ConversationState) -> dict[str, object]:
     red_flag_status = "yes" if state.safety.red_flag_present else "uncertain" if state.safety.red_flag_uncertain else "no"
     payload = {
-        "report_type": "oa_medication_treatment_questionnaire",
-        "schema_version": "0.9.0",
-        "assistant_version": "v0.9.0",
+        "report_type": REPORT_TYPE,
+        "schema_version": SCHEMA_VERSION,
+        "assistant_version": APP_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "session": {
             "session_id": state.session_id,
@@ -239,7 +240,7 @@ def report_payload(state: ConversationState) -> dict[str, object]:
             "Voice self-report only.",
             "No physical exam performed.",
             "No diagnosis or medication adjustment made.",
-            "v0.9.0 follows the DOCX questionnaire content and sample phone transcript style; it is not a validated survey instrument implementation.",
+            f"{APP_VERSION} follows the DOCX questionnaire content and sample phone transcript style; it is not a validated survey instrument implementation.",
         ],
         "medical_research_review": medical_research_review(state),
         "conversation_trace": conversation_trace(state),
@@ -394,14 +395,21 @@ def quality_metrics(state: ConversationState) -> dict[str, object]:
     rewrite_count = 0
     tts_failure_count = 0
     latencies = []
+    stt_latencies = []
+    engine_latencies = []
     for event in state.model_events:
         if not isinstance(event, dict):
             continue
         if event.get("transcript_source") == "browser_transcript":
             fallback_count += 1
         timings = event.get("timings")
-        if isinstance(timings, dict) and isinstance(timings.get("total_ms"), int):
-            latencies.append(timings["total_ms"])
+        if isinstance(timings, dict):
+            if isinstance(timings.get("total_ms"), int):
+                latencies.append(timings["total_ms"])
+            if isinstance(timings.get("stt_ms"), int):
+                stt_latencies.append(timings["stt_ms"])
+            if isinstance(timings.get("clinical_engine_ms"), int):
+                engine_latencies.append(timings["clinical_engine_ms"])
         for trace in event.get("ai_traces", []):
             if not isinstance(trace, dict):
                 continue
@@ -411,6 +419,10 @@ def quality_metrics(state: ConversationState) -> dict[str, object]:
                 rewrite_count += 1
         if "tts" in failure_tags_from_event(event):
             tts_failure_count += 1
+    interpretation_flags = questionnaire_interpretation_flags(state)
+    fuzzy_count = sum(1 for item in interpretation_flags if item.get("fuzzy"))
+    low_confidence_count = sum(1 for item in interpretation_flags if float(item.get("confidence") or 0) < 0.8)
+    review_count = sum(1 for item in interpretation_flags if item.get("needs_review"))
     return {
         "turn_count": len(state.transcript),
         "clarification_count": clarification_count,
@@ -419,14 +431,54 @@ def quality_metrics(state: ConversationState) -> dict[str, object]:
         "model_rewrite_count": rewrite_count,
         "tts_failure_count": tts_failure_count,
         "avg_turn_latency_ms": int(sum(latencies) / len(latencies)) if latencies else None,
+        "max_turn_latency_ms": max(latencies) if latencies else None,
+        "avg_stt_latency_ms": int(sum(stt_latencies) / len(stt_latencies)) if stt_latencies else None,
+        "max_stt_latency_ms": max(stt_latencies) if stt_latencies else None,
+        "avg_clinical_engine_latency_ms": int(sum(engine_latencies) / len(engine_latencies)) if engine_latencies else None,
+        "max_clinical_engine_latency_ms": max(engine_latencies) if engine_latencies else None,
+        "fuzzy_answer_count": fuzzy_count,
+        "low_confidence_answer_count": low_confidence_count,
+        "interpretation_review_count": review_count,
+        "questionnaire_interpretation_flags": interpretation_flags,
         "missing_required_fields": missing_required_fields(state),
     }
+
+
+def questionnaire_interpretation_flags(state: ConversationState) -> list[dict[str, object]]:
+    flags: list[dict[str, object]] = []
+    for step, answer in state.questionnaire.answers.items():
+        if not isinstance(answer, dict):
+            continue
+        interpretation = answer.get("interpretation")
+        if not isinstance(interpretation, dict):
+            continue
+        confidence = float(interpretation.get("confidence") or 0)
+        fuzzy = bool(interpretation.get("fuzzy"))
+        needs_review = bool(interpretation.get("needs_review"))
+        if not fuzzy and confidence >= 0.8 and not needs_review:
+            continue
+        flags.append(
+            {
+                "step": step,
+                "confidence": confidence,
+                "strategy": interpretation.get("strategy"),
+                "fuzzy": fuzzy,
+                "needs_review": needs_review,
+                "evidence": interpretation.get("evidence"),
+            }
+        )
+    return flags
 
 
 def failure_tags(state: ConversationState) -> list[str]:
     tags = set()
     if missing_required_fields(state):
         tags.add("missing_required_field")
+    interpretation_flags = questionnaire_interpretation_flags(state)
+    if any(float(item.get("confidence") or 0) < 0.8 for item in interpretation_flags):
+        tags.add("low_confidence_interpretation")
+    if any(item.get("needs_review") for item in interpretation_flags):
+        tags.add("semantic_review_required")
     if not state.model_events:
         tags.add("model_not_used")
     if state.safety.red_flag_uncertain:
@@ -496,6 +548,16 @@ def training_candidates(state: ConversationState, tags: list[str]) -> list[dict[
                 "requires_human_review": False,
                 "reason": "No usable model trace was observed.",
                 "preferred_behavior": "Verify local Qwen service, ENABLE_LOCAL_UNDERSTANDING, and model trace logging.",
+            }
+        )
+    if "semantic_review_required" in tags or "low_confidence_interpretation" in tags:
+        candidates.append(
+            {
+                "type": "semantic_parser_review",
+                "requires_human_review": True,
+                "reason": "One or more questionnaire answers were accepted from fuzzy or low-confidence wording.",
+                "context": questionnaire_interpretation_flags(state),
+                "preferred_behavior": "Review whether the accepted normalized answer matches the participant's intended meaning before using it for analysis.",
             }
         )
     return candidates

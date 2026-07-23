@@ -26,7 +26,7 @@ class LocalClinicalAI:
     def __init__(self) -> None:
         self.url = os.getenv("LOCAL_LLM_URL", DEFAULT_LOCAL_LLM_URL).strip()
         self.model = os.getenv("LOCAL_LLM_MODEL", DEFAULT_LOCAL_LLM_MODEL).strip()
-        self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "20"))
+        self.timeout_seconds = float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "6.0"))
         self.understanding_enabled = _env_enabled("ENABLE_LOCAL_UNDERSTANDING", default=True)
         self.reply_rewrite_enabled = _env_enabled("ENABLE_LOCAL_REPLY_REWRITE", default=False)
         self.last_trace: dict[str, object] | None = None
@@ -41,6 +41,7 @@ class LocalClinicalAI:
             "enabled": self.enabled,
             "understanding_enabled": self.understanding_enabled,
             "reply_rewrite_enabled": self.reply_rewrite_enabled,
+            "questionnaire_turn_interpreter": self.enabled and self.understanding_enabled,
             "url": self.url,
             "model": self.model,
             "timeout_seconds": self.timeout_seconds,
@@ -141,6 +142,91 @@ class LocalClinicalAI:
         )
         self._record_trace(self.last_trace)
         return _understanding_from_parsed(parsed, patient_text)
+
+    def interpret_questionnaire_turn(
+        self,
+        *,
+        step: str,
+        language: str,
+        question: str,
+        schema: dict[str, Any],
+        context: dict[str, Any],
+        patient_text: str,
+        recent_transcript: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any] | None:
+        self.last_trace = {
+            "component": "local_clinical_ai",
+            "operation": "interpret_questionnaire_turn",
+            "enabled": self.enabled and self.understanding_enabled,
+            "model": self.model,
+            "url": self.url,
+            "step": step,
+            "language": language,
+            "used_model": False,
+        }
+        if not self.enabled or not self.understanding_enabled:
+            self.last_trace["fallback"] = "semantic_interpreter_disabled"
+            self._record_trace(self.last_trace)
+            return None
+        compact_schema = {
+            "kind": schema.get("kind"),
+            "value_type": schema.get("value_type"),
+            "allowed_values": schema.get("allowed_values", []),
+            "options": schema.get("options", []),
+            "pain_anchor_rubric": schema.get("pain_anchor_rubric"),
+        }
+        compact_context = {
+            "answered_steps": context.get("answered_steps", []),
+            "skipped_if_now": context.get("skipped_if_now", {}),
+        }
+        payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "OA questionnaire semantic gate. Decide if patient text answers the current question. "
+                        "Map fuzzy patient wording to the canonical option value shown in schema.options. "
+                        "For pain_score, use the anchor rubric to map functional/sleep evidence to an integer 0-10. "
+                        "Return JSON only. No advice."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"lang={language} step={step}\n"
+                        f"question={question}\n"
+                        f"schema={json.dumps(compact_schema, ensure_ascii=False)}\n"
+                        f"context={json.dumps(compact_context, ensure_ascii=False)}\n"
+                        f"patient={patient_text}\n"
+                        "Return: {turn_type, answers_current_question, normalized:{value,values,other_text}, confidence, evidence, reason}. "
+                        "turn_type=answer only when it answers this question. Use canonical values from schema.options/allowed_values. "
+                        "For pain_score, normalized.value must be an integer 0-10; if inferred from anchors, put the anchor evidence in evidence/reason. "
+                        "For multi_choice use normalized.values; otherwise normalized.value."
+                    ),
+                },
+            ],
+            "temperature": 0.0,
+            "max_tokens": 120,
+        }
+        body = self._post_json(payload)
+        parsed = _parse_model_json(body)
+        if not parsed:
+            self.last_trace["fallback"] = "semantic_model_failure"
+            self._record_trace(self.last_trace)
+            return None
+        turn_type = str(parsed.get("turn_type") or "unknown")
+        self.last_trace.update(
+            {
+                "used_model": True,
+                "turn_type": turn_type,
+                "answers_current_question": parsed.get("answers_current_question"),
+                "confidence": float(parsed.get("confidence") or 0),
+                "normalized": parsed.get("normalized") if isinstance(parsed.get("normalized"), dict) else None,
+            }
+        )
+        self._record_trace(self.last_trace)
+        return parsed
 
     def friendly_reply(
         self,

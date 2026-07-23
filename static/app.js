@@ -74,6 +74,8 @@ let audioContext = null;
 let audioAnalyser = null;
 let audioMeterFrame = null;
 let audioMeterData = null;
+const SERVER_TTS_TIMEOUT_MS = 30000;
+const SERVER_TTS_SLOW_MS = 25000;
 let recordingStartedAt = null;
 let recordingTimerId = null;
 
@@ -105,7 +107,7 @@ const UI = {
     callEnded: "通话已结束。",
     realtimeUnavailable: "实时语音不可用，正在使用本地语音随访。",
     fallbackStarted: "已切换到基础本地随访模式。",
-    privateStarted: "已进入 v0.9.0 私有语音问卷流水线。请按“开始回答”，说完后按“结束回答”。",
+    privateStarted: "已进入 v0.9.5 私有语音问卷流水线。请按“开始回答”，说完后按“结束回答”。",
     privateUnavailable: "私有语音流水线暂不可用，正在使用基础本地随访。",
     privateRecordHint: "按“开始回答”后说一句完整回答；系统会用本地语音识别和规则引擎处理。",
     turnIdle: "每次回答一句完整内容",
@@ -222,7 +224,7 @@ const UI = {
     callEnded: "Call ended.",
     realtimeUnavailable: "Realtime voice is unavailable, using local voice check-in.",
     fallbackStarted: "Switched to the basic local check-in mode.",
-    privateStarted: "v0.9.0 private questionnaire voice pipeline is active. Press Start Answer, speak one complete answer, then stop.",
+    privateStarted: "v0.9.5 private questionnaire voice pipeline is active. Press Start Answer, speak one complete answer, then stop.",
     privateUnavailable: "Private voice pipeline is unavailable, so I switched to the basic local check-in.",
     privateRecordHint: "Press Start Answer, speak one complete answer, then stop. Local STT and the rule engine will process it.",
     turnIdle: "One complete answer per turn",
@@ -436,7 +438,7 @@ async function startRealtimeCall() {
 
 async function startBaseFallback(reason) {
   fallbackMode = true;
-  serverVoiceFallback = true;
+  serverVoiceFallback = false;
   resetConversationUi();
   setCallMode("connecting");
   const response = await fetch("/api/start", {
@@ -472,7 +474,7 @@ async function startPrivateCall() {
   }
   resetConversationUi();
   privateMode = true;
-  serverVoiceFallback = true;
+  serverVoiceFallback = false;
   setCallMode("connecting");
   try {
     const response = await fetch("/api/private/start", {
@@ -485,6 +487,7 @@ async function startPrivateCall() {
       throw new Error(payload.error || ui().privateUnavailable);
     }
     sessionId = payload.session_id;
+    serverVoiceFallback = Boolean(payload.pipeline?.stages?.tts?.enabled);
     callActive = true;
     updateConversationLayout();
     updateState(payload.state);
@@ -769,9 +772,12 @@ async function submitFallbackAnswer(text) {
 }
 
 async function speakFallbackQueue(messages) {
-  const spokenText = (messages || []).map((message) => String(message || "").trim()).filter(Boolean).join(" ");
-  if (spokenText) {
-    await speakFallback(spokenText);
+  const lines = (messages || [])
+    .map((message) => spokenOnlyText(message))
+    .filter(Boolean);
+  for (const line of lines) {
+    await speakFallback(line);
+    await delay(120);
   }
 }
 
@@ -779,7 +785,15 @@ async function autoListenForPrivateAnswer() {
   if (!privateMode || !sessionId || lastState?.complete) {
     return false;
   }
+  await delay(550);
+  if (!privateMode || !sessionId || lastState?.complete) {
+    return false;
+  }
   return beginPrivateTurnRecording({ interruptSpeech: false });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function speakFallback(text) {
@@ -790,12 +804,15 @@ function speakFallback(text) {
 }
 
 async function speakServerTts(text) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SERVER_TTS_TIMEOUT_MS);
   try {
     const requestStartedAt = performance.now();
     const response = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, language: currentLanguage }),
+      body: JSON.stringify({ text: spokenOnlyText(text), language: currentLanguage }),
+      signal: controller.signal,
     });
     if (!response.ok) {
       throw new Error("server tts unavailable");
@@ -803,11 +820,15 @@ async function speakServerTts(text) {
     const ttsLatencyMs = response.headers.get("X-TTS-Latency-Ms");
     const ttsEngine = response.headers.get("X-TTS-Engine");
     const blob = await response.blob();
+    const browserFetchMs = Math.round(performance.now() - requestStartedAt);
     serverTtsFailureCount = 0;
+    if (browserFetchMs > SERVER_TTS_SLOW_MS) {
+      console.debug("server tts slow", { browserFetchMs });
+    }
     console.debug("server tts", {
       engine: ttsEngine,
       serverLatencyMs: ttsLatencyMs,
-      browserFetchMs: Math.round(performance.now() - requestStartedAt),
+      browserFetchMs,
       bytes: blob.size,
     });
     const audioUrl = URL.createObjectURL(blob);
@@ -831,12 +852,34 @@ async function speakServerTts(text) {
     });
   } catch (error) {
     serverTtsFailureCount += 1;
-    if (serverTtsFailureCount >= 2) {
-      serverVoiceFallback = false;
+    console.warn("server tts failed for this line", error);
+    if (serverTtsFailureCount <= 2) {
+      addMessage("system", ui().browserFallbackStarted);
     }
-    addMessage("system", ui().browserFallbackStarted);
     await speakBrowserTts(text);
+  } finally {
+    clearTimeout(timeoutId);
   }
+}
+
+function spokenOnlyText(text) {
+  let cleaned = String(text || "").replace(/<\|endofprompt\|>/g, " ").trim();
+  const patterns = [
+    /^say this closing message naturally, then stop:\s*(.+)$/is,
+    /^say this next required clinical line naturally.*?required line:\s*(.+)$/is,
+    /^continue the clinical check-in using this required next content:\s*(.+)$/is,
+    /^the patient typed a backup answer\.\s*continue with this required next content:\s*(.+)$/is,
+    /^.*?required line:\s*(.+)$/is,
+    /^.*?required next content:\s*(.+)$/is,
+  ];
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (match) {
+      cleaned = match[1].trim();
+      break;
+    }
+  }
+  return cleaned.replace(/\s+/g, " ").slice(0, 500);
 }
 
 function speakBrowserTts(text) {
@@ -1203,8 +1246,13 @@ async function submitPrivateRecordedTurn() {
       body: blob,
     });
     const payload = await response.json();
+    console.debug("private turn pipeline", payload.pipeline || {});
     if (!response.ok) {
       throw new Error(payload.error || ui().privateUnavailable);
+    }
+    const timings = payload.pipeline?.timings;
+    if (timings?.total_ms) {
+      setTurnStatus(`STT ${timings.stt_ms || 0}ms · AI ${timings.clinical_engine_ms || 0}ms`);
     }
     const transcript = payload.transcript || privateTranscriptDraft;
     if (transcript) {
@@ -1782,10 +1830,17 @@ function setStatus(text, tone = "idle") {
 
 function scrollTranscriptToBottom() {
   requestAnimationFrame(() => {
-    const lastMessage = transcriptEl.lastElementChild;
-    if (lastMessage) {
-      lastMessage.scrollIntoView({ block: "end", behavior: "smooth" });
-    }
+    const targetTop = transcriptEl.scrollHeight;
+    transcriptEl.scrollTop = targetTop;
+    transcriptEl.scrollTo({
+      top: targetTop,
+      behavior: "smooth",
+    });
+    requestAnimationFrame(() => {
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      const latestMessage = transcriptEl.lastElementChild;
+      latestMessage?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
   });
 }
 

@@ -5,6 +5,7 @@ import inspect
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import urllib.error
@@ -24,7 +25,7 @@ KOKORO_EN_VOICE = "af_maple"
 COSYVOICE_MODEL_DIR = "/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
 COSYVOICE_REPO_DIR = "/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/CosyVoice"
 COSYVOICE_PROMPT_WAV = "/hdd-storage/lawrencelcty/huggingface/models/FunAudioLLM/CosyVoice/asset/zero_shot_prompt.wav"
-COSYVOICE_PROMPT_TEXT = "You are a helpful assistant.<|endofprompt|>希望你以后能够做的比我还好呦。"
+COSYVOICE_PROMPT_TEXT = "希望你以后能够做的比我还好呦。"
 QWEN_TTS_MODEL_DIR = "/home/lawrencelcty/huggingface/models/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 QWEN_TTS_ZH_SPEAKER = "Vivian"
 QWEN_TTS_EN_SPEAKER = "Ryan"
@@ -48,7 +49,7 @@ class LocalTTS:
         self.prefer_local = _env_enabled("PREFER_SERVER_TTS")
         self.allow_remote_service = allow_remote_service
         self.remote_service_url = os.getenv("TTS_SERVICE_URL", "").strip().rstrip("/")
-        self.remote_timeout_seconds = float(os.getenv("TTS_SERVICE_TIMEOUT_SECONDS", "20"))
+        self.remote_timeout_seconds = float(os.getenv("TTS_SERVICE_TIMEOUT_SECONDS", "3.0"))
 
     def status(self) -> dict[str, object]:
         qwen_path = _qwen_model_dir()
@@ -221,7 +222,7 @@ class LocalTTS:
         else:
             generator = model.inference_zero_shot(
                 text,
-                _cosyvoice_prompt_text(),
+                _cosyvoice_prompt_with_end_marker(_cosyvoice_prompt_text()),
                 prompt_wav,
                 stream=_cosyvoice_stream_enabled(),
             )
@@ -329,7 +330,16 @@ class LocalTTS:
 
     def _cache_path(self, text: str, lang_code: str, voice: str, engine: str = "kokoro") -> Path:
         key = json.dumps(
-            {"text": text, "lang_code": lang_code, "voice": voice, "engine": engine},
+            {
+                "text": text,
+                "lang_code": lang_code,
+                "voice": voice,
+                "engine": engine,
+                "cache_version": _tts_cache_version(),
+                "cosyvoice_mode": _cosyvoice_mode() if engine == "cosyvoice3" else None,
+                "cosyvoice_prompt_text": _cosyvoice_prompt_text() if engine == "cosyvoice3" else None,
+                "cosyvoice_instruction": _cosyvoice_cache_instruction(lang_code) if engine == "cosyvoice3" else None,
+            },
             sort_keys=True,
             ensure_ascii=False,
         )
@@ -342,7 +352,37 @@ class LocalTTS:
 
 
 def _clean_text(text: str) -> str:
-    return " ".join(text.strip().split())[:500]
+    cleaned = " ".join(text.strip().split())
+    cleaned = cleaned.replace("<|endofprompt|>", " ").strip()
+    cleaned = _strip_internal_tts_instruction(cleaned)
+    return " ".join(cleaned.split())[:500]
+
+
+def _strip_internal_tts_instruction(text: str) -> str:
+    patterns = (
+        r"(?is)^say this closing message naturally, then stop:\s*(.+)$",
+        r"(?is)^say this next required clinical line naturally.*?required line:\s*(.+)$",
+        r"(?is)^continue the clinical check-in using this required next content:\s*(.+)$",
+        r"(?is)^the patient typed a backup answer\.\s*continue with this required next content:\s*(.+)$",
+        r"(?is)^.*?required line:\s*(.+)$",
+        r"(?is)^.*?required next content:\s*(.+)$",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, text)
+        if match:
+            return match.group(1).strip()
+    return text
+
+
+def _tts_cache_version() -> str:
+    return os.getenv("TTS_CACHE_VERSION", "v3-clean-prompt-marker")
+
+
+def _cosyvoice_cache_instruction(lang_code: str) -> str | None:
+    if _cosyvoice_mode() != "instruct2":
+        return None
+    language = "zh-CN" if lang_code == "zh" else "en"
+    return _cosyvoice_instruction(language)
 
 
 def _kokoro_fallback_enabled() -> bool:
@@ -380,8 +420,8 @@ def _cosyvoice_prompt_text() -> str:
 
 
 def _cosyvoice_mode() -> str:
-    mode = os.getenv("COSYVOICE_MODE", "instruct2").strip().lower()
-    return mode if mode in {"instruct2", "zero_shot"} else "instruct2"
+    mode = os.getenv("COSYVOICE_MODE", "zero_shot").strip().lower()
+    return mode if mode in {"instruct2", "zero_shot"} else "zero_shot"
 
 
 def _cosyvoice_stream_enabled() -> bool:

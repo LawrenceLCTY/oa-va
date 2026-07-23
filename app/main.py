@@ -20,6 +20,7 @@ from app.private_pipeline import PrivateVoicePipeline
 from app.schemas import ConversationState
 from app.stt import LocalSTT
 from app.tts import LocalTTS
+from app.version import APP_VERSION
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -63,7 +64,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
                     "local_ai": LOCAL_AI.status(),
                     "fallback": {
                         "enabled": True,
-                        "mode": "v0.9.0 DOCX/audio-guided questionnaire flow with deterministic validation, local STT/TTS, and browser transcript fallback",
+                        "mode": f"{APP_VERSION} DOCX/audio-guided questionnaire flow with Qwen-first semantic interpretation, deterministic validation, sanitized local STT/TTS, and browser transcript fallback",
                     },
                 }
             )
@@ -232,7 +233,7 @@ class OARequestHandler(BaseHTTPRequestHandler):
                 language=language,
                 fallback_text=fallback_text,
             )
-            if not result.transcript:
+            if not result.transcript and not result.assistant_messages:
                 self._send_json(
                     {
                         "error": "; ".join(result.errors) or "private pipeline did not produce a transcript",

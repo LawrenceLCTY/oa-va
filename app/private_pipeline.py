@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.conversation import ConversationEngine
+from app.i18n import t
 from app.report import generate_report
 from app.schemas import ConversationState
-from app.stt import LocalSTT
+from app.stt import LocalSTT, sanitize_transcript
 from app.tts import LocalTTS
+from app.version import APP_VERSION
 
 
 @dataclass
@@ -55,7 +58,7 @@ class PrivateVoicePipeline:
 
     def status(self) -> dict[str, Any]:
         return {
-            "version": "v0.9.0",
+            "version": APP_VERSION,
             "mode": "private_questionnaire_pipeline",
             "production_target": True,
             "stages": {
@@ -64,16 +67,16 @@ class PrivateVoicePipeline:
                     "streaming_target": "WebRTC audio frames in a later runtime",
                 },
                 "vad_endpointing": {
-                    "engine": "browser/manual turn endpointing for v0.9.0",
+                    "engine": f"browser/manual plus auto-silence endpointing for {APP_VERSION}",
                     "planned": "WebRTC VAD or Silero VAD",
                 },
                 "stt": self.stt.status(),
-                "structured_extraction": {
-                    "engine": "local Qwen-compatible extractor when ConversationEngine AI is configured",
+                "semantic_turn_interpreter": {
+                    "engine": "local Qwen-compatible questionnaire turn interpreter when ConversationEngine AI is configured",
                     "clinical_authority": False,
                 },
                 "clinical_controller": {
-                    "engine": "ConversationEngine deterministic DOCX-guided questionnaire rulebook",
+                    "engine": "ConversationEngine deterministic DOCX-guided schema validator, branching, safety, and report writer",
                     "clinical_authority": True,
                 },
                 "verbalizer": {
@@ -83,8 +86,8 @@ class PrivateVoicePipeline:
                 "tts": self.tts.status(),
             },
             "research_side_notes": {
-                "covo": "archived half-duplex V2V experiment, not v0.9.0 production path",
-                "glm4voice": "future research candidate for native V2V interface, not v0.9.0 production path",
+                "covo": f"archived half-duplex V2V experiment, not {APP_VERSION} production path",
+                "glm4voice": f"future research candidate for native V2V interface, not {APP_VERSION} production path",
             },
         }
 
@@ -102,29 +105,50 @@ class PrivateVoicePipeline:
         transcript = ""
         transcript_source = "none"
 
-        if audio:
+        fallback_transcript = sanitize_transcript(fallback_text)
+        prefer_browser_transcript = _env_enabled("PREFER_BROWSER_TRANSCRIPT", default=True)
+        if prefer_browser_transcript and fallback_transcript:
+            transcript = fallback_transcript
+            transcript_source = "browser_transcript"
+            timing.mark("stt")
+        elif audio:
             transcript, err = self.stt.transcribe(audio, filename, language)
             timing.mark("stt")
+            transcript = sanitize_transcript(transcript)
             if transcript:
                 transcript_source = "local_stt"
             elif err:
                 errors.append(f"stt: {err}")
+            else:
+                errors.append("stt: unusable transcript after sanitization")
         else:
             timing.mark("stt")
 
-        if not transcript and fallback_text.strip():
-            transcript = fallback_text.strip()
+        if not transcript and fallback_transcript:
+            transcript = fallback_transcript
             transcript_source = "browser_transcript"
 
         if not transcript:
+            state.assistant(t(language, "not_caught"))
+            timing.mark("clinical_engine")
+            event = {
+                "component": "private_voice_pipeline",
+                "transcript_source": transcript_source,
+                "filename": filename,
+                "language": language,
+                "timings": timing.to_dict(),
+                "errors": errors or ["no usable transcript produced"],
+                "ai_traces": [],
+            }
+            state.model_events.append(event)
             return PipelineTurnResult(
                 transcript="",
                 transcript_source=transcript_source,
-                assistant_messages=[],
+                assistant_messages=[state.transcript[-1]["text"]],
                 spoken_instruction="",
                 state=state,
                 timings=timing.to_dict(),
-                errors=errors or ["no transcript produced"],
+                errors=errors or ["no usable transcript produced"],
             )
 
         before = len(state.transcript)
@@ -172,3 +196,10 @@ def _new_ai_traces(engine: ConversationEngine, start: int) -> list[dict[str, obj
         trace = getattr(ai, "last_trace", None)
         return [trace] if isinstance(trace, dict) else []
     return [trace for trace in traces[start:] if isinstance(trace, dict)]
+
+
+def _env_enabled(name: str, *, default: bool = False) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}

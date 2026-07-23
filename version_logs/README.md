@@ -15,6 +15,11 @@ Use this folder to backtrack:
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| [v0.9.5](./v0.9.5.md) | 2026-07-23 | Implements Qwen-first questionnaire turn interpretation with deterministic schema validation and restores the pre-v0.9 call layout. |
+| [v0.9.4](./v0.9.4.md) | 2026-07-22 | Pins the live voice dock while keeping transcript auto-scroll inside a contained conversation history panel. |
+| [v0.9.3](./v0.9.3.md) | 2026-07-22 | Adds fuzzy Chinese interpretation metadata, confidence/review flags, and semantic parser regressions while preserving deterministic step control. |
+| [v0.9.2](./v0.9.2.md) | 2026-07-22 | Hardens STT sanitation/fallback, centralizes version metadata, aligns default questionnaire start, and adds replay/regression tests. |
+| [v0.9.1](./v0.9.1.md) | 2026-07-22 | Improves server TTS latency handling, adds warmed TTS sidecar behavior, and reduces private voice turn-taking friction. |
 | [v0.9.0](./v0.9.0.md) | 2026-07-22 | Replaces the active flow with the DOCX/audio-guided OA medication and treatment questionnaire. |
 | [v0.8.4](./v0.8.4.md) | 2026-07-09 | Adapts the v0.8 visual theme around PKU red with restrained clinical-support colors. |
 | [v0.8.3](./v0.8.3.md) | 2026-07-09 | Removes confusing demo/trust phrases and keeps the interface focused on the actual check-in workflow. |

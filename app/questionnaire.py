@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -79,10 +80,10 @@ QUESTIONNAIRE_STEPS: tuple[QuestionnaireStep, ...] = (
     QuestionnaireStep(
         "last_flare_pain_score",
         "pain_score",
-        "请给那次发作的疼痛打个分，0到10分。0分是一点都不疼，10分是能想象到的最严重疼痛。",
-        "Please rate the pain during that flare from 0 to 10, where 0 is no pain and 10 is the worst pain imaginable.",
-        "这个问题需要记录0到10分的疼痛评分。",
-        "This question needs a 0 to 10 pain score.",
+        "然后我们给那次发作的疼痛打个分。这个评分是0到10分：0分是一点都不疼，10分是痛不欲生。为了方便您判断，一般轻度疼痛是0到3分，通常不影响睡眠；4到6分左右是中度疼痛，可能会有一点影响睡眠；如果安静平卧时也会疼，通常就更重一些。您回忆那次疼痛，大概是几分？",
+        "Please rate the pain during that flare from 0 to 10: 0 is no pain, 10 is unbearable. Mild pain is usually 0 to 3 and does not affect sleep; moderate pain is around 4 to 6 and may affect sleep a little; pain even while lying still is usually more severe. About what score was that pain?",
+        "请按0到10分估计；如果不好直接给数字，可以说轻度、中度、是否影响睡眠、安静平卧会不会疼。",
+        "Please estimate 0 to 10. If a number is hard, say mild/moderate/severe, whether it affected sleep, and whether it hurt while lying still.",
     ),
     QuestionnaireStep(
         "annual_flare_frequency",
@@ -284,7 +285,7 @@ _STEPS_BY_KEY = {step.key: step for step in QUESTIONNAIRE_STEPS}
 
 
 def first_questionnaire_step() -> str:
-    return QUESTIONNAIRE_STEP_KEYS[0]
+    return required_steps({})[0]
 
 
 def is_questionnaire_step(step: str) -> bool:
@@ -317,6 +318,9 @@ def next_missing_step(answers: dict[str, Any], after: str | None = None) -> str 
 
 
 def should_ask_step(step: str, answers: dict[str, Any]) -> bool:
+    if step == "survey_id":
+        return _survey_id_enabled()
+
     oral_used = _answer_value(answers.get("oral_painkiller_used"))
     missed_doses = _answer_value(answers.get("missed_doses"))
     adverse_reactions = _answer_value(answers.get("adverse_reactions"))
@@ -354,36 +358,146 @@ def should_ask_step(step: str, answers: dict[str, Any]) -> bool:
     return True
 
 
+def questionnaire_step_schema(step: str, language: str = "zh-CN") -> dict[str, Any]:
+    definition = _STEPS_BY_KEY[step]
+    schema: dict[str, Any] = {
+        "step": step,
+        "kind": definition.kind,
+        "question": prompt_for_step(step, language),
+        "clarification": clarification_for_step(step, language),
+    }
+    options = _allowed_options(step)
+    if options:
+        schema["allowed_values"] = options
+        schema["options"] = _option_specs(step)
+    if definition.kind == "pain_score":
+        schema["value_type"] = "integer_0_to_10"
+        schema["pain_anchor_rubric"] = _pain_anchor_rubric(language)
+    elif definition.kind == "multi_choice":
+        schema["value_type"] = "array"
+    else:
+        schema["value_type"] = "string"
+    return schema
+
+
+def questionnaire_context(answers: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "answered_steps": sorted(answers),
+        "answers": answers,
+        "required_steps": required_steps(answers),
+        "skipped_if_now": mark_not_applicable(answers),
+    }
+
+
+def validate_questionnaire_interpretation(
+    step: str,
+    interpretation: dict[str, Any] | None,
+    raw: str,
+    *,
+    min_confidence: float = 0.72,
+) -> tuple[bool, dict[str, Any] | None, str]:
+    if not isinstance(interpretation, dict):
+        return False, None, "missing_ai_interpretation"
+    turn_type = str(interpretation.get("turn_type") or "unknown")
+    if turn_type != "answer":
+        return False, None, f"ai_turn_{turn_type}"
+    if interpretation.get("answers_current_question") is not True:
+        return False, None, "ai_answer_wrong_question"
+    try:
+        confidence = float(interpretation.get("confidence") or 0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    if confidence < min_confidence:
+        return False, None, "ai_low_confidence"
+    normalized = interpretation.get("normalized")
+    if not isinstance(normalized, dict):
+        return False, None, "ai_missing_normalized_answer"
+
+    accepted, payload, reason = _validate_normalized_answer(step, normalized, raw)
+    if not accepted or payload is None:
+        return accepted, payload, reason
+    payload = dict(payload)
+    payload["interpretation"] = {
+        "accepted": True,
+        "confidence": round(max(0.0, min(1.0, confidence)), 2),
+        "strategy": "ai_semantic_interpreter",
+        "fuzzy": True,
+        "needs_review": confidence < 0.82,
+        "evidence": str(interpretation.get("evidence") or raw),
+        "turn_type": turn_type,
+        "answers_current_question": True,
+        "reason": str(interpretation.get("reason") or ""),
+        "validator": "questionnaire_schema",
+    }
+    clarification = interpretation.get("clarification_prompt")
+    if clarification:
+        payload["interpretation"]["model_clarification_prompt"] = str(clarification)
+    return True, payload, "valid_ai_interpretation"
+
+
 def parse_questionnaire_answer(step: str, text: str) -> tuple[bool, dict[str, Any] | None, str]:
     definition = _STEPS_BY_KEY[step]
     raw = _clean(text)
     if not raw:
         return False, None, "empty_answer"
+    if _looks_like_user_feedback(raw):
+        return False, None, "user_feedback_not_answer"
 
     if definition.kind == "free_text":
-        return True, {"value": raw}, "valid_free_text"
+        return True, _with_interpretation({"value": raw}, raw, 0.9, "free_text"), "valid_free_text"
     if definition.kind == "yes_no":
-        value = _parse_yes_no(raw)
+        if step == "oa_diagnosis":
+            value = _parse_oa_diagnosis_yes_no(raw)
+        elif step == "adverse_reactions":
+            value = _parse_adverse_reaction_yes_no(raw)
+        else:
+            value = _parse_yes_no(raw, step)
         if value == "unknown":
             return False, None, "unclear_yes_no"
-        return True, {"value": value}, "valid_yes_no"
+        confidence, strategy, fuzzy = _yes_no_interpretation(raw, step)
+        return True, _with_interpretation({"value": value}, raw, confidence, strategy, fuzzy), "valid_yes_no"
     if definition.kind == "pain_score":
         score = parse_pain_score(raw)
+        if score is None and step == "last_flare_pain_score":
+            score = _parse_qualitative_pain_score(raw)
+            if score is not None:
+                return True, _with_interpretation(
+                    {"value": score, "scale": "0-10", "method": "qualitative_anchor"},
+                    raw,
+                    0.78,
+                    "qualitative_anchor",
+                    fuzzy=True,
+                    needs_review=True,
+                ), "valid_qualitative_pain_score"
         if score is None:
             return False, None, "invalid_pain_score"
-        return True, {"value": score, "scale": "0-10"}, "valid_pain_score"
+        return True, _with_interpretation(
+            {"value": score, "scale": "0-10", "method": "direct_numeric"},
+            raw,
+            0.96,
+            "direct_numeric",
+        ), "valid_pain_score"
     if definition.kind == "flare_frequency":
         value = _parse_flare_frequency(raw)
         if value is None:
             return False, None, "invalid_flare_frequency"
-        return True, {"value": value}, "valid_flare_frequency"
+        confidence, strategy, fuzzy = _frequency_interpretation(raw)
+        return True, _with_interpretation({"value": value}, raw, confidence, strategy, fuzzy), "valid_flare_frequency"
     if definition.kind == "usual_response":
         return _choice_result(_parse_usual_response(raw), raw)
     if definition.kind == "multi_choice":
         labels = _parse_multi_choice(step, raw)
         if not labels:
             return False, None, "unclear_multi_choice"
-        return True, {"values": labels, "other_text": raw if "other" in labels else None}, "valid_multi_choice"
+        confidence, strategy, fuzzy = _multi_choice_interpretation(step, raw, labels)
+        return True, _with_interpretation(
+            {"values": labels, "other_text": raw if "other" in labels else None},
+            raw,
+            confidence,
+            strategy,
+            fuzzy,
+            needs_review="other" in labels,
+        ), "valid_multi_choice"
     if definition.kind == "improvement":
         return _choice_result(_parse_improvement(raw), raw)
     if definition.kind == "willingness":
@@ -394,7 +508,7 @@ def parse_questionnaire_answer(step: str, text: str) -> tuple[bool, dict[str, An
         return _choice_result(_parse_purchase_method(raw), raw)
     if definition.kind == "guidance_frequency":
         return _choice_result(_parse_guidance_frequency(raw), raw)
-    return True, {"value": raw}, "valid_fallback"
+    return True, _with_interpretation({"value": raw}, raw, 0.72, "fallback", fuzzy=True, needs_review=True), "valid_fallback"
 
 
 def mark_not_applicable(answers: dict[str, Any]) -> dict[str, str]:
@@ -417,13 +531,359 @@ def completion_summary(answers: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _validate_normalized_answer(step: str, normalized: dict[str, Any], raw: str) -> tuple[bool, dict[str, Any] | None, str]:
+    definition = _STEPS_BY_KEY[step]
+    if definition.kind == "free_text":
+        value = _normalized_string(normalized)
+        if not value:
+            return False, None, "ai_empty_free_text"
+        return True, {"value": value}, "valid_ai_free_text"
+    if definition.kind == "yes_no":
+        value = _normalize_ai_yes_no_value(_normalized_string(normalized), step)
+        if value not in {"yes", "no"}:
+            return False, None, "ai_invalid_yes_no"
+        return True, {"value": value}, "valid_ai_yes_no"
+    if definition.kind == "pain_score":
+        score, method = _normalize_ai_pain_score(step, normalized, raw)
+        if score is None or not 0 <= score <= 10:
+            return False, None, "ai_invalid_pain_score"
+        return True, {"value": score, "scale": "0-10", "method": method}, "valid_ai_pain_score"
+    if definition.kind in {"flare_frequency", "usual_response", "improvement", "willingness", "doctor_counseling", "purchase_method", "guidance_frequency"}:
+        value = _normalize_ai_choice_value(step, _normalized_string(normalized))
+        allowed = set(_allowed_options(step))
+        if value not in allowed:
+            return False, None, "ai_invalid_choice"
+        payload: dict[str, Any] = {"value": value}
+        if value == "other":
+            payload["other_text"] = str(normalized.get("other_text") or raw)
+        return True, payload, "valid_ai_choice"
+    if definition.kind == "multi_choice":
+        values = normalized.get("values")
+        if values is None and normalized.get("value") is not None:
+            values = [normalized.get("value")]
+        if not isinstance(values, list):
+            return False, None, "ai_invalid_multi_choice"
+        labels = [
+            normalized_label
+            for value in values
+            if (normalized_label := _normalize_ai_choice_value(step, str(value).strip()))
+        ]
+        allowed = set(_allowed_options(step))
+        if not labels or any(label not in allowed for label in labels):
+            return False, None, "ai_invalid_multi_choice"
+        if "none" in labels and len(labels) > 1:
+            return False, None, "ai_invalid_multi_choice"
+        return True, {"values": labels, "other_text": str(normalized.get("other_text") or raw) if "other" in labels else None}, "valid_ai_multi_choice"
+    return False, None, "ai_unsupported_step_kind"
+
+
+def _pain_anchor_rubric(language: str = "zh-CN") -> dict[str, object]:
+    if language == "zh-CN":
+        return {
+            "scale": "0到10分",
+            "anchors": [
+                {"score": 0, "label": "一点都不疼"},
+                {"range": "0-3", "label": "轻度疼痛", "signals": ["通常不影响睡眠", "安静平卧不疼", "咳嗽深呼吸不疼", "翻身不疼", "走路有点疼/僵硬"]},
+                {"range": "4-6", "label": "中度疼痛", "signals": ["可能轻微影响睡眠", "休息或平卧有时也疼"]},
+                {"range": "7-10", "label": "重度疼痛", "signals": ["明显影响睡眠", "安静平卧也明显疼", "痛不欲生接近10分"]},
+            ],
+            "instruction": "先让受访者按锚点自我定位；若只描述功能/睡眠影响，可据证据估计一个整数并标注为anchor_based。",
+        }
+    return {
+        "scale": "0 to 10",
+        "anchors": [
+            {"score": 0, "label": "no pain"},
+            {"range": "0-3", "label": "mild", "signals": ["usually does not affect sleep", "no pain lying still", "walking discomfort/stiffness only"]},
+            {"range": "4-6", "label": "moderate", "signals": ["may affect sleep a little", "sometimes hurts at rest"]},
+            {"range": "7-10", "label": "severe", "signals": ["clearly affects sleep", "hurts even lying still", "unbearable is near 10"]},
+        ],
+        "instruction": "Ask the participant to self-place on the anchored scale; if they give anchor evidence, estimate an integer and mark anchor_based.",
+    }
+
+
+def _normalize_ai_pain_score(step: str, normalized: dict[str, Any], raw: str) -> tuple[int | None, str]:
+    candidates = [
+        normalized.get("value"),
+        normalized.get("score"),
+        normalized.get("pain_score"),
+        normalized.get("range"),
+        normalized.get("severity"),
+        normalized.get("severity_band"),
+        normalized.get("label"),
+        raw,
+    ]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        score = _parse_direct_score_value(candidate)
+        if score is not None:
+            return score, "ai_semantic_direct_numeric"
+    if step == "last_flare_pain_score":
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            score = _parse_anchored_pain_score(str(candidate))
+            if score is not None:
+                return score, "ai_semantic_anchor_based"
+    return None, "ai_semantic"
+
+
+def _parse_direct_score_value(value: Any) -> int | None:
+    if isinstance(value, (int, float)):
+        score = int(value)
+        return score if 0 <= score <= 10 else None
+    text = str(value).strip()
+    if not text:
+        return None
+    compact = re.sub(r"\s+", "", text.lower())
+    if compact in {"0-3", "0到3", "零到三", "轻度", "mild"}:
+        return None
+    if compact in {"4-6", "4到6", "四到六", "中度", "moderate"}:
+        return None
+    if compact in {"7-10", "7到10", "七到十", "重度", "severe"}:
+        return None
+    score = parse_pain_score(text)
+    return score if score is not None and 0 <= score <= 10 else None
+
+
+def _parse_anchored_pain_score(text: str) -> int | None:
+    compact = re.sub(r"\s+", "", text.lower())
+    if not compact:
+        return None
+    if any(term in compact for term in ("一点都不疼", "完全不疼", "一点不疼", "不疼痛", "无痛", "nopain")):
+        return 0
+
+    mild_signals = (
+        "轻度", "0-3", "0到3", "零到三", "不影响睡眠", "不影响休息", "睡眠不受影响",
+        "平卧不疼", "安静平卧不疼", "休息不疼", "翻身不疼", "咳嗽深呼吸不疼",
+        "走路有点", "走路僵硬", "轻微", "mild",
+    )
+    if any(term in compact for term in mild_signals):
+        return 2
+
+    if any(term in compact for term in ("痛不欲生", "无法忍受", "不能忍", "最严重", "unbearable", "worst")):
+        return 10
+    if any(term in compact for term in ("重度", "严重影响睡眠", "睡不了", "睡不着", "疼醒", "平卧也明显疼", "安静也明显疼", "severe")):
+        return 8
+    if any(term in compact for term in ("中度", "轻微影响睡眠", "有点影响睡眠", "睡眠受影响", "平卧有时候疼", "安静平卧有时候疼", "休息时也疼", "moderate")):
+        return 5
+    if "影响睡眠" in compact and not any(term in compact for term in ("不影响睡眠", "没有影响睡眠", "没影响睡眠")):
+        return 5
+    return None
+
+
+def _normalize_ai_yes_no_value(value: str | None, step: str | None = None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text in {"yes", "no"}:
+        return text
+    parsed = _parse_oa_diagnosis_yes_no(text) if step == "oa_diagnosis" else _parse_yes_no(text, step)
+    return parsed if parsed in {"yes", "no"} else text
+
+
+def _option_specs(step: str) -> list[dict[str, str]]:
+    aliases = _choice_aliases(step)
+    specs = []
+    for value in _allowed_options(step):
+        terms = aliases.get(value, ())
+        zh = next((term for term in terms if _has_cjk(term)), value)
+        en = next((term for term in terms if not _has_cjk(term)), value)
+        specs.append({"value": value, "zh": zh, "en": en})
+    return specs
+
+
+def _choice_aliases(step: str) -> dict[str, tuple[str, ...]]:
+    definition = _STEPS_BY_KEY[step]
+    if definition.kind == "yes_no":
+        return {"yes": ("是", "有", "会", "能", "吃过", "用过", "yes"), "no": ("否", "不是", "没有", "不会", "不能", "没吃过", "no")}
+    if definition.kind == "flare_frequency":
+        return {"0": ("0次", "零次", "没有", "none"), "1": ("1次", "一次", "one"), "2": ("2次", "两次", "二次", "two"), "3": ("3次", "三次", "three"), "4": ("4次", "四次", "four"), "5": ("5次", "五次", "five"), "1-2": ("一两次", "一到两次", "1-2", "1 to 2"), "6-10": ("六到十次", "6到10次", "6-10", "6 to 10"), ">10": ("超过十次", "十多次", "很多次", "more than 10")}
+    if definition.kind == "usual_response":
+        return {"hospital_clinic_immediately": ("立刻去医院门诊", "马上去医院", "hospital clinic"), "self_medicate_then_hospital_if_needed": ("先自行买止痛药或膏药", "自己买药", "self medicate"), "endure_no_treatment": ("单纯忍着", "忍着", "endure"), "community_or_physical_therapy": ("社区医院或理疗店", "社区", "理疗", "community clinic"), "other": ("其他", "other")}
+    if definition.kind == "improvement":
+        return {"markedly_worse": ("明显恶化", "显著恶化", "much worse"), "slightly_worse": ("稍有恶化", "有点恶化", "slightly worse"), "no_change": ("无变化", "没有变化", "没变化", "no change"), "slightly_improved": ("稍有改善", "有点改善", "slightly improved"), "markedly_improved": ("明显改善", "显著改善", "好多了", "不疼了", "markedly improved")}
+    if definition.kind == "willingness":
+        return {"willing": ("愿意", "可以", "willing"), "neutral": ("无所谓", "都行", "neutral"), "unwilling": ("不愿意", "不想", "unwilling")}
+    if definition.kind == "doctor_counseling":
+        return {"detailed_every_time": ("每次仔细交代", "详细讲解", "detailed every time"), "brief_most_times": ("大部分时候简单说几句", "简单说", "brief most times"), "rarely_explained": ("很少讲解", "只是开药", "rarely explained"), "none": ("完全没有讲解", "没有", "none")}
+    if definition.kind == "purchase_method":
+        return {"new_prescription": ("拿医生新处方", "新处方", "new prescription"), "old_prescription_reuse": ("拿以前旧处方重复买", "旧处方", "old prescription"), "self_select_without_prescription": ("不用处方自己挑", "自己按疼痛挑", "self select"), "staff_recommendation_without_prescription": ("听药店人员推荐", "店员推荐", "staff recommendation")}
+    if definition.kind == "guidance_frequency":
+        return {"never": ("从未", "没有", "never"), "occasionally": ("偶尔", "有时候", "occasionally"), "often": ("经常", "常常", "often")}
+    if step == "affected_joints":
+        return {"knee": ("膝关节", "膝盖", "腿", "knee"), "hip": ("髋关节", "胯", "hip"), "hand": ("手部", "手", "hand"), "foot": ("足部", "脚", "foot"), "shoulder": ("肩关节", "肩", "shoulder"), "other": ("其他", "other")}
+    if step == "missed_dose_reasons":
+        return {"busy_work": ("工作繁忙", "工作忙", "busy work"), "poor_memory": ("记性差", "忘记", "poor memory"), "side_effect_concern": ("担心副作用", "副作用", "side effects"), "symptoms_not_severe": ("自觉症状不重", "不严重", "symptoms not severe"), "other": ("其他", "other")}
+    if step == "adverse_reaction_symptoms":
+        return {"gastrointestinal_discomfort": ("肠胃不适", "胃不舒服", "gastrointestinal discomfort"), "dizziness_or_drowsiness": ("头晕或嗜睡", "头晕", "嗜睡", "dizziness or drowsiness"), "skin_allergy": ("皮肤过敏", "过敏", "skin allergy"), "liver_or_kidney_abnormality": ("肝肾功能异常", "肝", "肾", "liver or kidney abnormality"), "edema_or_blood_pressure": ("水肿或血压升高", "水肿", "血压", "edema or blood pressure"), "other": ("其他", "other")}
+    if step == "non_oral_treatments":
+        return {"topical_patch": ("外敷膏药", "膏药", "patch"), "injection": ("注射治疗", "打针", "injection"), "physical_therapy": ("理疗推拿按摩", "理疗", "按摩", "physical therapy"), "exercise_therapy": ("运动康复", "锻炼", "exercise therapy"), "weight_management": ("体重管理", "减重", "weight management"), "assistive_device": ("护膝拐杖", "护膝", "拐杖", "assistive device"), "acupuncture_moxibustion": ("针灸艾灸", "针灸", "艾灸", "acupuncture"), "other": ("其他", "other"), "none": ("没有其他治疗", "没有", "none")}
+    if step == "painkiller_channels":
+        return {"hospital_clinic": ("医院门诊", "医生开", "医院", "hospital clinic"), "community_hospital": ("社区医院", "社区", "community hospital"), "retail_pharmacy": ("零售药店", "药店", "retail pharmacy"), "online_pharmacy": ("线上药房", "网上", "online pharmacy"), "family_or_friend": ("家人朋友代买", "家人", "朋友", "family or friend"), "other": ("其他", "other"), "none": ("没有", "none")}
+    if step == "retail_pharmacy_reasons":
+        return {"hospital_inconvenient": ("去医院费时间", "医院费时间", "hospital inconvenient"), "nearby_pharmacy": ("家附近有药店", "附近", "nearby pharmacy"), "online_delivery": ("手机下单送货", "送货", "online delivery"), "cheaper": ("药店更便宜", "便宜", "cheaper"), "long_term_refill": ("长期吃药方便续药", "续药", "long term refill"), "trust_formal": ("药店正规放心", "正规", "放心", "trust formal"), "staff_advice": ("药店人员会给建议", "药师建议", "staff advice"), "other": ("其他", "other")}
+    return {}
+
+
+def _has_cjk(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in text)
+
+
+def _normalize_ai_choice_value(step: str, value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text in set(_allowed_options(step)):
+        return text
+    compact = re.sub(r"\s+", "", text.lower())
+    aliases = _choice_aliases(step)
+    for canonical, terms in aliases.items():
+        for term in terms:
+            if compact == re.sub(r"\s+", "", term.lower()):
+                return canonical
+    ordered_terms = sorted(
+        ((canonical, term) for canonical, terms in aliases.items() for term in terms),
+        key=lambda item: len(item[1]),
+        reverse=True,
+    )
+    for canonical, term in ordered_terms:
+        term_compact = re.sub(r"\s+", "", term.lower())
+        if term_compact and term_compact in compact:
+            return canonical
+    return text
+
+
+def _normalized_string(normalized: dict[str, Any]) -> str | None:
+    value = normalized.get("value")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _allowed_options(step: str) -> list[str]:
+    definition = _STEPS_BY_KEY[step]
+    if definition.kind == "yes_no":
+        return ["yes", "no"]
+    if definition.kind == "flare_frequency":
+        return ["0", "1", "2", "3", "4", "5", "1-2", "6-10", ">10"]
+    if definition.kind == "usual_response":
+        return ["hospital_clinic_immediately", "self_medicate_then_hospital_if_needed", "endure_no_treatment", "community_or_physical_therapy", "other"]
+    if definition.kind == "improvement":
+        return ["markedly_worse", "slightly_worse", "no_change", "slightly_improved", "markedly_improved"]
+    if definition.kind == "willingness":
+        return ["willing", "neutral", "unwilling"]
+    if definition.kind == "doctor_counseling":
+        return ["detailed_every_time", "brief_most_times", "rarely_explained", "none"]
+    if definition.kind == "purchase_method":
+        return ["new_prescription", "old_prescription_reuse", "self_select_without_prescription", "staff_recommendation_without_prescription"]
+    if definition.kind == "guidance_frequency":
+        return ["never", "occasionally", "often"]
+    if step == "affected_joints":
+        return ["knee", "hip", "hand", "foot", "shoulder", "other"]
+    if step == "missed_dose_reasons":
+        return ["busy_work", "poor_memory", "side_effect_concern", "symptoms_not_severe", "other"]
+    if step == "adverse_reaction_symptoms":
+        return ["gastrointestinal_discomfort", "dizziness_or_drowsiness", "skin_allergy", "liver_or_kidney_abnormality", "edema_or_blood_pressure", "other"]
+    if step == "non_oral_treatments":
+        return ["topical_patch", "injection", "physical_therapy", "exercise_therapy", "weight_management", "assistive_device", "acupuncture_moxibustion", "other", "none"]
+    if step == "painkiller_channels":
+        return ["hospital_clinic", "community_hospital", "retail_pharmacy", "online_pharmacy", "family_or_friend", "other", "none"]
+    if step == "retail_pharmacy_reasons":
+        return ["hospital_inconvenient", "nearby_pharmacy", "online_delivery", "cheaper", "long_term_refill", "trust_formal", "staff_advice", "other"]
+    return []
+
+
 def _choice_result(value: str | None, raw: str) -> tuple[bool, dict[str, Any] | None, str]:
     if value is None:
         return False, None, "unclear_choice"
     payload: dict[str, Any] = {"value": value}
     if value == "other":
         payload["other_text"] = raw
-    return True, payload, "valid_choice"
+    confidence, strategy, fuzzy, needs_review = _choice_interpretation(raw, value)
+    return True, _with_interpretation(payload, raw, confidence, strategy, fuzzy, needs_review), "valid_choice"
+
+
+def _with_interpretation(
+    payload: dict[str, Any],
+    raw: str,
+    confidence: float,
+    strategy: str,
+    fuzzy: bool = False,
+    needs_review: bool = False,
+) -> dict[str, Any]:
+    result = dict(payload)
+    result["interpretation"] = {
+        "accepted": True,
+        "confidence": round(max(0.0, min(1.0, confidence)), 2),
+        "strategy": strategy,
+        "fuzzy": bool(fuzzy),
+        "needs_review": bool(needs_review),
+        "evidence": raw,
+    }
+    return result
+
+
+def _yes_no_interpretation(raw: str, step: str) -> tuple[float, str, bool]:
+    compact = re.sub(r"\s+", "", raw.lower())
+    direct = {
+        "是", "是的", "对", "对的", "有", "否", "不是", "没有", "没", "无",
+        "会", "不会", "能", "不能", "用过", "吃过", "没用过", "没吃过",
+    }
+    if compact in direct:
+        return 0.96, "direct_yes_no", False
+    if step == "oa_diagnosis" and any(term in compact for term in ("医生", "诊断", "骨关节炎")):
+        return 0.86, "fuzzy_diagnosis_evidence", True
+    if step == "adverse_reactions":
+        if any(term in compact for term in ("没有不良反应", "没不良反应", "没有副作用", "没副作用", "没有反应", "没反应", "都没有")):
+            return 0.94, "direct_adverse_reaction_absence", False
+        if any(term in compact for term in ("副作用", "不良反应", "肠胃", "头晕", "过敏", "水肿", "血压")):
+            return 0.88, "symptom_evidence", True
+    return 0.84, "fuzzy_yes_no", True
+
+
+def _frequency_interpretation(raw: str) -> tuple[float, str, bool]:
+    compact = re.sub(r"\s+", "", raw.lower())
+    if re.fullmatch(r"\d+", compact):
+        return 0.96, "direct_numeric", False
+    return 0.86, "fuzzy_frequency", True
+
+
+def _multi_choice_interpretation(step: str, raw: str, labels: list[str]) -> tuple[float, str, bool]:
+    compact = re.sub(r"\s+", "", raw.lower())
+    if labels == ["none"]:
+        return 0.94, "direct_none", False
+    if step == "painkiller_channels" and any(term in compact for term in ("医生开", "医生给", "医生", "开给我", "开药")):
+        return 0.87, "fuzzy_doctor_channel", True
+    if step == "affected_joints" and any(term in compact for term in ("气关节", "七关节", "器官节")):
+        return 0.76, "stt_fuzzy_joint", True
+    if "other" in labels:
+        return 0.72, "other_choice", True
+    return 0.88, "keyword_multi_choice", len(raw) > 4
+
+
+def _choice_interpretation(raw: str, value: str) -> tuple[float, str, bool, bool]:
+    compact = re.sub(r"\s+", "", raw.lower())
+    if value == "other":
+        return 0.72, "other_choice", True, True
+    if value in {
+        "markedly_improved",
+        "slightly_improved",
+        "markedly_worse",
+        "slightly_worse",
+        "no_change",
+    }:
+        if any(term in compact for term in ("明显改善", "稍有改善", "明显恶化", "稍有恶化", "无变化", "没变化")):
+            return 0.96, "direct_improvement_choice", False, False
+        if any(term in compact for term in ("不疼", "管用", "有效", "吃一两颗就不疼")):
+            return 0.86, "fuzzy_effect_description", True, False
+        return 0.74, "fuzzy_improvement_description", True, True
+    if value in {"willing", "neutral", "unwilling"}:
+        return 0.94, "direct_willingness_choice", False, False
+    return 0.88, "keyword_choice", len(raw) > 4, False
 
 
 def _answer_value(answer: Any) -> str | None:
@@ -445,17 +905,74 @@ def _answer_values(answer: Any) -> list[str]:
     return []
 
 
-def _parse_yes_no(text: str) -> str:
+
+def _looks_like_user_feedback(text: str) -> bool:
     compact = re.sub(r"\s+", "", text.lower())
+    feedback_terms = (
+        "不聪明",
+        "不大聪明",
+        "太笨",
+        "很笨",
+        "听不懂",
+        "没听懂",
+        "没听明白",
+        "答非所问",
+        "问错",
+        "乱问",
+        "不是这个",
+        "你搞错",
+        "你错了",
+        "wrongquestion",
+        "notwhatimean",
+    )
+    return any(term in compact for term in feedback_terms)
+
+def _parse_oa_diagnosis_yes_no(text: str) -> str:
+    compact = re.sub(r"\s+", "", text.lower())
+    if compact in {"是", "是的", "对", "对的", "有", "诊断过"}:
+        return "yes"
+    if compact in {"否", "不是", "没有", "没", "没诊断", "没有诊断", "没诊断过", "不知道", "不清楚"}:
+        return "no" if compact not in {"不知道", "不清楚"} else "unknown"
+    if any(term in compact for term in ("明确诊断", "医生说是", "医生诊断", "诊断为骨关节炎", "骨关节炎")):
+        if any(term in compact for term in ("没有", "没", "不是", "否")):
+            return "no"
+        return "yes"
+    return "unknown"
+
+
+def _parse_yes_no(text: str, step: str | None = None) -> str:
+    compact = re.sub(r"\s+", "", text.lower())
+    if step == "oa_diagnosis" and any(term in compact for term in ("这里是", "这是", "是北京", "是研究")):
+        return "unknown"
     if compact in {"不会", "不能", "不是", "不用", "不愿意", "没用过", "没吃过"}:
         return "no"
-    if compact in {"会", "能", "愿意", "用过", "吃过"}:
+    if compact in {"会", "会的", "能", "能的", "愿意", "用过", "吃过", "是", "是的", "对", "对的", "有"}:
         return "yes"
     if any(term in compact for term in ("不会", "不能", "没有", "没", "无", "否")):
         return "no"
-    if any(term in compact for term in ("会", "可以", "能", "有", "是", "对")):
+    yes_terms = ("会的", "可以", "能", "有", "是的", "对的", "明确诊断", "医生说是", "用过", "吃过")
+    if any(term in compact for term in yes_terms):
+        return "yes"
+    if step != "oa_diagnosis" and any(term in compact for term in ("会", "是", "对")):
         return "yes"
     return classify_yes_no_unsure(text)
+
+
+def _parse_adverse_reaction_yes_no(text: str) -> str:
+    compact = re.sub(r"\s+", "", text.lower())
+    if any(term in compact for term in ("没有不良反应", "没不良反应", "没有副作用", "没副作用", "没有反应", "没反应", "都没有")):
+        return "no"
+    if any(term in compact for term in ("不良反应", "副作用", "肠胃", "胃不舒服", "胃疼", "恶心", "头晕", "嗜睡", "皮疹", "瘙痒", "过敏", "水肿", "血压")):
+        return "yes"
+    if compact in {"没有", "没", "无", "没有的", "没有没有"}:
+        return "no"
+    if any(term in compact for term in ("不疼", "止疼", "改善", "有效", "管用")):
+        return "unknown"
+    return _parse_yes_no(text)
+
+
+def _parse_qualitative_pain_score(text: str) -> int | None:
+    return _parse_anchored_pain_score(text)
 
 
 def _parse_flare_frequency(text: str) -> str | None:
@@ -531,10 +1048,8 @@ def _parse_multi_choice(step: str, text: str) -> list[str]:
             "acupuncture_moxibustion": ("针灸", "艾灸", "acupuncture"),
         }
     elif step == "painkiller_channels":
-        if _parse_yes_no(text) == "no" or any(term in compact for term in ("没有", "没买过", "未购买")):
-            return ["none"]
         mapping = {
-            "hospital_clinic": ("医院门诊", "门诊", "hospital"),
+            "hospital_clinic": ("医院门诊", "门诊", "医院", "医生开", "医生给", "医生", "开给我", "开药", "hospital"),
             "community_hospital": ("社区", "community"),
             "retail_pharmacy": ("零售药店", "药店", "pharmacy"),
             "online_pharmacy": ("线上", "网上", "京东", "阿里", "叮当", "online"),
@@ -553,6 +1068,8 @@ def _parse_multi_choice(step: str, text: str) -> list[str]:
     else:
         mapping = {}
     labels = [label for label, terms in mapping.items() if any(term in compact for term in terms)]
+    if step == "painkiller_channels" and not labels and (_parse_yes_no(text) == "no" or any(term in compact for term in ("没买过", "未购买"))):
+        return ["none"]
     if not labels and any(term in compact for term in ("其他", "other")):
         labels.append("other")
     return labels
@@ -566,16 +1083,19 @@ def _parse_improvement(text: str) -> str | None:
         return "slightly_worse"
     if any(term in compact for term in ("无变化", "没变化", "一样", "nochange")):
         return "no_change"
-    if any(term in compact for term in ("明显改善", "明显好", "markedlyimproved", "muchbetter")):
+    if any(term in compact for term in ("明显改善", "明显好", "不疼了", "不疼", "管用", "有效", "吃一两颗就不疼", "markedlyimproved", "muchbetter")):
         return "markedly_improved"
-    if any(term in compact for term in ("稍有改善", "有点改善", "好一点", "slightlyimproved", "abitbetter")):
+    if any(term in compact for term in ("稍有改善", "有点改善", "好一点", "还行", "改善", "slightlyimproved", "abitbetter")):
         return "slightly_improved"
     return None
 
 
 def _parse_willingness(text: str) -> str | None:
     compact = re.sub(r"\s+", "", text.lower())
-    if any(term in compact for term in ("不愿意", "不想", "unwilling")):
+    conditional = any(term in compact for term in ("要不贵", "如果不贵", "贵", "太贵", "讹"))
+    if conditional and any(term in compact for term in ("愿意", "不可能", "不吃")):
+        return None
+    if any(term in compact for term in ("不愿意", "不想", "不可能", "unwilling")):
         return "unwilling"
     if any(term in compact for term in ("无所谓", "都可以", "随便", "neutral")):
         return "neutral"
@@ -627,6 +1147,10 @@ def _parse_guidance_frequency(text: str) -> str | None:
     if any(term in compact for term in ("经常", "常常", "often", "frequent")):
         return "often"
     return None
+
+
+def _survey_id_enabled() -> bool:
+    return os.getenv("ASK_SURVEY_ID", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _clean(text: str) -> str:

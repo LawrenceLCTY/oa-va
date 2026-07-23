@@ -19,7 +19,7 @@ The browser reads `X-TTS-Latency-Ms` and `X-TTS-Engine` headers and logs them wi
 
 ```bash
 TTS_SERVICE_URL=http://127.0.0.1:8002
-TTS_SERVICE_TIMEOUT_SECONDS=20
+TTS_SERVICE_TIMEOUT_SECONDS=3.0
 TTS_WARMUP_ON_START=1
 
 PREFER_SERVER_TTS=1

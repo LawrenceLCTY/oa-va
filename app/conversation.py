@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Any
 from app.clinical_rules import (
     detect_symptoms,
 )
@@ -22,6 +23,9 @@ from app.questionnaire import (
     next_missing_step,
     parse_questionnaire_answer,
     prompt_for_step,
+    questionnaire_context,
+    questionnaire_step_schema,
+    validate_questionnaire_interpretation,
 )
 from app.report import generate_report
 from app.schemas import ConversationState
@@ -99,15 +103,17 @@ class ConversationEngine:
             self._assistant(state, t(state.language, "escalation"))
             return state
 
-        understood = self.ai.understand(state.step, state.language, user_text)
-        if understood:
-            self._merge_understanding_safety(state, user_text, understood)
-            self._apply_understood_slots(state, understood, user_text)
-            if state.safety.red_flag_present and not state.escalation_message_spoken:
-                state.safety.action_advised = t(state.language, "urgent_action")
-                state.escalation_message_spoken = True
-                self._assistant(state, t(state.language, "escalation"))
-                return state
+        understood = None
+        if not is_questionnaire_step(state.step):
+            understood = self.ai.understand(state.step, state.language, user_text)
+            if understood:
+                self._merge_understanding_safety(state, user_text, understood)
+                self._apply_understood_slots(state, understood, user_text)
+                if state.safety.red_flag_present and not state.escalation_message_spoken:
+                    state.safety.action_advised = t(state.language, "urgent_action")
+                    state.escalation_message_spoken = True
+                    self._assistant(state, t(state.language, "escalation"))
+                    return state
 
         if state.pending_clarification:
             if self._handle_pending_clarification(state, user_text, understood):
@@ -207,7 +213,7 @@ class ConversationEngine:
         text: str,
         understood: UnderstandingResult | None,
     ) -> None:
-        accepted, payload, reason = parse_questionnaire_answer(state.step, text)
+        accepted, payload, reason = self._interpret_and_validate_questionnaire_answer(state, text)
         if not accepted or payload is None:
             self._clarify(state, text, clarification_for_step(state.step, state.language), reason)
             return
@@ -247,6 +253,42 @@ class ConversationEngine:
                 )
 
         self._advance_to_next_questionnaire_step(state, after=state.step)
+
+    def _interpret_and_validate_questionnaire_answer(
+        self,
+        state: ConversationState,
+        text: str,
+    ) -> tuple[bool, dict[str, Any] | None, str]:
+        interpreter = getattr(self.ai, "interpret_questionnaire_turn", None)
+        if callable(interpreter):
+            schema = questionnaire_step_schema(state.step, state.language)
+            interpretation = interpreter(
+                step=state.step,
+                language=state.language,
+                question=prompt_for_step(state.step, state.language),
+                schema=schema,
+                context=questionnaire_context(state.questionnaire.answers),
+                patient_text=text,
+                recent_transcript=state.transcript,
+            )
+            if isinstance(interpretation, dict):
+                accepted, payload, reason = validate_questionnaire_interpretation(state.step, interpretation, text)
+                if accepted and payload is not None:
+                    return True, payload, reason
+                turn_type = str(interpretation.get("turn_type") or "")
+                if turn_type in {"complaint", "correction", "off_topic", "safety", "unclear"}:
+                    return False, None, reason
+                if reason in {"ai_low_confidence", "ai_answer_wrong_question", "ai_invalid_choice", "ai_invalid_multi_choice", "ai_invalid_yes_no", "ai_invalid_pain_score"}:
+                    return False, None, reason
+            accepted, payload, reason = parse_questionnaire_answer(state.step, text)
+            if accepted and payload is not None:
+                return True, _mark_semantic_gate_fallback(payload, reason, "semantic_gate_unavailable_or_timeout"), "semantic_gate_unavailable_fallback"
+            return False, None, reason
+
+        accepted, payload, reason = parse_questionnaire_answer(state.step, text)
+        if accepted and payload is not None:
+            return True, _mark_semantic_gate_fallback(payload, reason, "semantic_gate_not_configured"), "semantic_gate_not_configured_fallback"
+        return False, None, reason
 
     def _handle_identity(self, state: ConversationState, text: str, understood: UnderstandingResult | None) -> None:
         self._apply_understood_identity(state, understood)
@@ -935,6 +977,9 @@ class ConversationEngine:
         state.assistant(self.llm.polish_assistant_reply(message))
 
     def _clarify(self, state: ConversationState, patient_text: str, clinical_prompt: str, reason: str) -> None:
+        if reason == "user_feedback_not_answer":
+            state.assistant(clinical_prompt)
+            return
         prompt = None
         clarification_reply = getattr(self.ai, "clarification_reply", None)
         if callable(clarification_reply):
@@ -1094,6 +1139,29 @@ def _join_missing(items: list[str], language: str) -> str:
 
 def _strict_readiness_enabled() -> bool:
     return os.getenv("STRICT_READINESS_FLOW", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _mark_semantic_gate_fallback(payload: dict[str, Any], parser_reason: str, gate_status: str) -> dict[str, Any]:
+    marked = dict(payload)
+    interpretation = dict(marked.get("interpretation") if isinstance(marked.get("interpretation"), dict) else {})
+    try:
+        original_confidence = float(interpretation.get("confidence") or 0)
+    except (TypeError, ValueError):
+        original_confidence = 0.0
+    interpretation.update(
+        {
+            "accepted": True,
+            "confidence": round(min(original_confidence, 0.6), 2),
+            "strategy": f"deterministic_parser_after_{gate_status}",
+            "semantic_gate": gate_status,
+            "parser_reason": parser_reason,
+            "fuzzy": True,
+            "needs_review": True,
+            "validator": "questionnaire_schema_fallback",
+        }
+    )
+    marked["interpretation"] = interpretation
+    return marked
 
 
 def _understood_yes_no(understood: UnderstandingResult | None) -> str | None:
